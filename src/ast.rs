@@ -12,40 +12,6 @@ impl Display for Position {
     }
 }
 
-pub struct Lines {
-    breaks: Vec<usize>,
-}
-
-impl Lines {
-    pub fn new(input: &str) -> Self {
-        let breaks = input
-            .chars()
-            .enumerate()
-            .filter_map(|(p, c)| if c == '\n' { Some(p) } else { None })
-            .collect();
-
-        Self { breaks }
-    }
-
-    pub fn position(&self, offset: usize) -> Position {
-        let line_idx = match self.breaks.binary_search(&offset) {
-            Ok(i) => i,
-            Err(i) => i,
-        };
-
-        match line_idx {
-            0 => Position {
-                line: 1,
-                column: offset + 1,
-            },
-            i => Position {
-                line: i + 1,
-                column: offset - self.breaks[i - 1],
-            },
-        }
-    }
-}
-
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct Leaf<T> {
     pub inner: T,
@@ -331,30 +297,5 @@ impl<'a> Def<'a> {
             Self::Fn(fun) => fun.offset(),
             Self::Class(class) => class.offset(),
         }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn lines_new() {
-        let info = Lines::new("asd\nasd\n\n");
-        assert_eq!(info.breaks, &[3, 7, 8]);
-
-        let info = Lines::new("");
-        assert_eq!(info.breaks, &[]);
-    }
-
-    #[test]
-    fn lines_get_full_position() {
-        let info = Lines::new("asd\nassd\n\nasd");
-
-        assert_eq!(info.position(0), Position { line: 1, column: 1 });
-        assert_eq!(info.position(3), Position { line: 1, column: 4 });
-        assert_eq!(info.position(4), Position { line: 2, column: 1 });
-        assert_eq!(info.position(6), Position { line: 2, column: 3 });
-        assert_eq!(info.position(12), Position { line: 4, column: 3 });
     }
 }

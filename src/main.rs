@@ -5,9 +5,8 @@ lalrpop_mod!(#[allow(clippy::all)] pub grammar);
 
 use grammar::ProgramParser;
 use latc::{
-    ast::Lines,
     backend::{self, AsmProgram},
-    error::LatteError,
+    error::{ErrorContext, LatteError},
     frontend, middlend,
 };
 use std::{
@@ -39,13 +38,14 @@ fn main() -> ExitCode {
             println!("{}", prog);
 
             eprintln!("OK");
+
             ExitCode::SUCCESS
         }
         Err(e) => {
-            let lines = Lines::new(&input);
+            let ctx = ErrorContext::new(&input);
 
             eprintln!("ERROR");
-            eprintln!("{}", e.display(&lines));
+            eprintln!("{}", ctx.display(&e));
 
             ExitCode::FAILURE
         }

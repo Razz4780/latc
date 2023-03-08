@@ -1,4 +1,4 @@
-use crate::ast::{Lines, Type};
+use crate::ast::{Position, Type};
 use lalrpop_util::{lexer::Token, ParseError};
 use std::fmt::{self, Display, Formatter};
 
@@ -9,10 +9,6 @@ pub struct LatteError {
 }
 
 impl LatteError {
-    pub fn display<'a>(&'a self, lines: &'a Lines) -> LatteErrorDisplay<'a> {
-        LatteErrorDisplay { error: self, lines }
-    }
-
     pub fn new(msg: String) -> Self {
         Self { msg, offset: None }
     }
@@ -61,17 +57,80 @@ impl From<ParseError<usize, Token<'_>, (String, usize)>> for LatteError {
 
 pub struct LatteErrorDisplay<'a> {
     error: &'a LatteError,
-    lines: &'a Lines,
+    ctx: &'a ErrorContext,
 }
 
 impl<'a> Display for LatteErrorDisplay<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self.error.offset {
             Some(offset) => {
-                let pos = self.lines.position(offset);
-                write!(f, "error at {}: {}", pos, self.error.msg)
+                let pos = self.ctx.position(offset);
+                write!(f, "{} at {}", pos, self.error.msg)
             }
-            None => write!(f, "error: {}", self.error.msg),
+            None => write!(f, "{}", self.error.msg),
         }
+    }
+}
+
+pub struct ErrorContext {
+    line_breaks: Vec<usize>,
+}
+
+impl ErrorContext {
+    pub fn new(input: &str) -> Self {
+        let line_breaks = input
+            .chars()
+            .enumerate()
+            .filter_map(|(p, c)| (c == '\n').then_some(p))
+            .collect();
+
+        Self { line_breaks }
+    }
+
+    fn position(&self, offset: usize) -> Position {
+        let line_idx = match self.line_breaks.binary_search(&offset) {
+            Ok(i) => i,
+            Err(i) => i,
+        };
+
+        match line_idx {
+            0 => Position {
+                line: 1,
+                column: offset + 1,
+            },
+            i => Position {
+                line: i + 1,
+                column: offset - self.line_breaks[i - 1],
+            },
+        }
+    }
+
+    pub fn display<'a>(&'a self, error: &'a LatteError) -> LatteErrorDisplay<'a> {
+        LatteErrorDisplay { error, ctx: self }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn ctx_new() {
+        let ctx = ErrorContext::new("asd\nasd\n\n");
+        assert_eq!(ctx.line_breaks, &[3, 7, 8]);
+
+        let ctx = ErrorContext::new("");
+        assert_eq!(ctx.line_breaks, &[]);
+    }
+
+    #[test]
+    fn ctx_position() {
+        let ctx = ErrorContext::new("asd\nassd\n\nasd");
+
+        assert_eq!(ctx.position(0), Position { line: 1, column: 1 });
+        assert_eq!(ctx.position(3), Position { line: 1, column: 4 });
+        assert_eq!(ctx.position(4), Position { line: 2, column: 1 });
+        assert_eq!(ctx.position(6), Position { line: 2, column: 3 });
+        assert_eq!(ctx.position(12), Position { line: 4, column: 3 });
     }
 }
