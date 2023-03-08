@@ -1,0 +1,416 @@
+use std::str::FromStr;
+use lalrpop_util::ParseError;
+use latc::{
+    ast::{
+        Leaf, Exp, Type, SimpleType,
+        UnOp, BinOp, Stmt, Item,
+        FnDef, ClassDef, Member, Arg,
+        Def, Field,
+    },
+};
+
+grammar;
+
+match {
+    ":",
+    ".",
+    "+",
+    "-",
+    "*",
+    "/",
+    "%",
+    "[",
+    "]",
+    "[]",
+    "<",
+    "<=",
+    ">",
+    ">=",
+    "==",
+    "!=",
+    "&&",
+    "||",
+    "(",
+    ")",
+    "!",
+    "{",
+    "}",
+    "=",
+    "++",
+    "--",
+    "void",
+    "true",
+    "false",
+    "if",
+    ",",
+    ";",
+    "return",
+    "new",
+    "else",
+    "while",
+    "for",
+    "int",
+    "string",
+    "boolean",
+    "class",
+    "extends",
+    ")null",
+    r"[0-9]+",
+    r"[a-zA-Z][a-zA-Z0-9\\_\\']*",
+    r#""([^"\\]|(\\["\\tnrf]))*""#,
+
+    r"\s*" => { },
+    r"//[^\n\r]*[\n\r]*" => { },
+    r"#[^\n\r]*[\n\r]*" => { },
+    r"/\*([^\*]*\*+[^\*/])*([^\*]*\*+|[^\*])*\*/" => { },
+}
+
+extern {
+    type Error = (String, usize);
+}
+
+Comma<T>: Vec<T> = {
+    <mut v:(<T> ",")*> <e:T?> => match e {
+        None => v,
+        Some(e) => {
+            v.push(e);
+            v
+        }
+    }
+};
+
+CommaNotEmpty<T>: Vec<T> = <mut v:(<T> ",")*> <e:T> => {
+    v.push(e);
+    v
+};
+
+Lit: Leaf<i32> = <offset:@L> <s:r"[0-9]+"> =>? {
+    let inner = i32::from_str(s)
+        .map_err(|_| ParseError::User {
+            error: (
+                format!("int literal \"{}\" out of bounds", s),
+                offset,
+            )
+        })?;
+
+    Ok(Leaf::new(inner, offset))
+};
+
+Ident: Leaf<&'input str> = <offset:@L> <inner:r"[a-zA-Z][a-zA-Z0-9\\_\\']*"> => Leaf::new(
+    inner,
+    offset,
+);
+
+AddOp: Leaf<BinOp> = {
+    <offset:@L> "+" => Leaf::new(BinOp::Add, offset),
+    <offset:@L> "-" => Leaf::new(BinOp::Sub, offset),
+};
+
+MulOp: Leaf<BinOp> = {
+    <offset:@L> "*" => Leaf::new(BinOp::Mul, offset),
+    <offset:@L> "/" => Leaf::new(BinOp::Div, offset),
+    <offset:@L> "%" => Leaf::new(BinOp::Mod, offset),
+};
+
+RelOp: Leaf<BinOp> = {
+    <offset:@L> "<" => Leaf::new(BinOp::LTH, offset),
+    <offset:@L> "<=" => Leaf::new(BinOp::LE, offset),
+    <offset:@L> ">" => Leaf::new(BinOp::GTH, offset),
+    <offset:@L> ">=" => Leaf::new(BinOp::GE, offset),
+    <offset:@L> "==" => Leaf::new(BinOp::EQ, offset),
+    <offset:@L> "!=" => Leaf::new(BinOp::NEQ, offset),
+}
+
+Exp1: Exp<'input> = {
+    <lhs:Exp2> <offset:@L> "||" <rhs:Exp1> => Exp::Bin {
+        lhs: Box::new(lhs),
+        op: Leaf::new(BinOp::Or, offset),
+        rhs: Box::new(rhs),
+    },
+    <exp:Exp2> => exp,
+};
+
+Exp2: Exp<'input> = {
+    <lhs:Exp3> <offset:@L> "&&" <rhs:Exp2> => Exp::Bin {
+        lhs: Box::new(lhs),
+        op: Leaf::new(BinOp::And, offset),
+        rhs: Box::new(rhs),
+    },
+    <exp: Exp3> => exp,
+}
+
+Exp3: Exp<'input> = {
+    <lhs:Exp3> <op:RelOp> <rhs:Exp4> => Exp::Bin {
+        lhs: Box::new(lhs),
+        op,
+        rhs: Box::new(rhs),
+    },
+    <exp:Exp4> => exp,
+};
+
+Exp4: Exp<'input> = {
+    <lhs:Exp4> <op:AddOp> <rhs:Exp5> => Exp::Bin {
+        lhs: Box::new(lhs),
+        op,
+        rhs: Box::new(rhs),
+    },
+    <exp:Exp5> => exp,
+};
+
+Exp5: Exp<'input> = {
+    <lhs:Exp5> <op:MulOp> <rhs:Exp6> => Exp::Bin {
+        lhs: Box::new(lhs),
+        op,
+        rhs: Box::new(rhs),
+    },
+    <exp:Exp6> => exp,
+};
+
+Exp6: Exp<'input> = {
+    <offset:@L> "!" <exp:Exp7> => Exp::Un {
+        inner: Box::new(exp),
+        op: Leaf::new(UnOp::Not, offset),
+    },
+    <offset:@L> "-" <exp:Exp7> => Exp::Un {
+        inner: Box::new(exp),
+        op: Leaf::new(UnOp::Neg, offset),
+    },
+    <exp:Exp7> => exp,
+};
+
+Exp7: Exp<'input> = {
+    <offset:@L> "new" <ident:Ident> => Exp::New {
+        inner: ident.map(SimpleType::Class),
+        offset,
+    },
+    <offset:@L> "new" <inner:SimpleType> "[" <exp:Exp1> "]" => Exp::NewArr {
+        inner,
+        offset,
+        size: Box::new(exp),
+    },
+    <exp:Exp8> => exp,
+};
+
+Exp8: Exp<'input> = {
+    <offset:@L> "(" <cast:Type> ")null" => Exp::Null {
+        offset,
+        cast,
+    },
+    <exp1:Exp8> "[" <exp2:Exp1> "]" => Exp::Index {
+        inner: Box::new(exp1),
+        index: Box::new(exp2),
+    },
+    <lit:Lit> => Exp::Int(lit),
+    <ident:Ident> => Exp::Var(ident),
+    <offset:@L> "true" => Exp::Bool(Leaf::new(true, offset)),
+    <offset:@L> "false" => Exp::Bool(Leaf::new(false, offset)),
+    <exp:Exp8> "(" <arguments:Comma<Exp1>> ")" => Exp::App {
+        function: Box::new(exp),
+        arguments,
+    },
+    <offset:@L> <inner:r#""([^"\\]|(\\["\\tnrf]))*""#> =>? {
+        if inner.is_ascii() {
+            Ok(Exp::Str(Leaf::new(
+                inner.strip_prefix('"').unwrap().strip_suffix('"').unwrap(),
+                offset
+            )))
+        } else {
+            Err(ParseError::User {
+                error: (
+                    format!("literal \"{}\" is not ASCII", inner),
+                    offset,
+                )
+            })
+        }
+    },
+    <exp:Exp8> "." <ident:Ident> => Exp::Member {
+        inner: Box::new(exp),
+        name: ident,
+    },
+    "(" <exp:Exp1> ")" => exp,
+};
+
+SimpleType: Leaf<SimpleType<'input>> = {
+    <offset:@L> "int" => Leaf::new(SimpleType::Int, offset),
+    <offset:@L> "string" => Leaf::new(SimpleType::Str, offset),
+    <offset:@L> "boolean" => Leaf::new(SimpleType::Bool, offset),
+    <ident:Ident> => ident.map(SimpleType::Class),
+};
+
+Type: Leaf<Type<'input>> = {
+    <inner:SimpleType> "[]" => inner.map(Type::Arr),
+    <inner:SimpleType> => inner.map(Type::Simple),
+};
+
+Item: Item<'input> = {
+    <var:Ident> "=" <exp:Exp1> => Item {
+        var,
+        exp: Some(exp),
+    },
+    <var:Ident> => Item { var, exp: None },
+};
+
+StmtNoTrail: Stmt<'input> = {
+    <offset:@L> "{" <inner:Stmt*> "}" => Stmt::Block {
+        offset,
+        inner,
+    },
+    ";" => Stmt::Empty,
+    <item_type:Type> <items:CommaNotEmpty<Item>> ";" => Stmt::Decl {
+        item_type,
+        items,
+    },
+    <loc:Exp1> "=" <exp:Exp1> ";" => Stmt::Ass { loc, exp },
+    <loc:Exp1> "++" ";" => Stmt::Incr { loc },
+    <loc:Exp1> "--" ";" => Stmt::Decr { loc },
+    <offset:@L> "return" <exp:Exp1?> ";" => Stmt::Ret {
+        offset,
+        exp,
+    },
+    <exp:Exp1> ";" => Stmt::Exp(exp),
+};
+
+StmtIf: Stmt<'input> = {
+    <offset:@L> "if" "(" <cond:Exp1> ")" <inner:Stmt> => Stmt::Cond {
+        offset,
+        cond,
+        inner: Box::new(inner),
+    },
+};
+
+StmtIfElse: Stmt<'input> = {
+    <offset:@L> "if" "(" <cond:Exp1> ")" <s1:StmtNoShortIf> "else" <s2:Stmt> => Stmt::CondElse {
+        offset,
+        cond,
+        inner_if: Box::new(s1),
+        inner_else: Box::new(s2),
+    },
+}
+
+StmtWhile: Stmt<'input> = {
+    <offset:@L> "while" "(" <cond:Exp1> ")" <inner:Stmt> => Stmt::While {
+        offset,
+        cond,
+        inner: Box::new(inner),
+    },
+}
+
+StmtFor: Stmt<'input> = {
+    <offset:@L> "for" "(" <elem_type:SimpleType> <elem_ident:Ident> ":" <arr:Exp1> ")" <inner:Stmt> => Stmt::For {
+        offset,
+        elem_type,
+        elem_ident,
+        arr,
+        inner: Box::new(inner),
+    },
+}
+
+StmtNoShortIf: Stmt<'input> = {
+	<stmt:StmtNoTrail> => stmt,
+	<stmt:StmtIfElseNoShortIf> => stmt,
+	<stmt:StmtWhileNoShortIf> => stmt,
+	<stmt:StmtForNoShortIf> => stmt,
+};
+
+StmtIfElseNoShortIf: Stmt<'input> = {
+    <offset:@L> "if" "(" <cond:Exp1> ")" <s1:StmtNoShortIf> "else" <s2:StmtNoShortIf> => Stmt::CondElse {
+        offset,
+        cond,
+        inner_if: Box::new(s1),
+        inner_else: Box::new(s2),
+    },
+}
+
+StmtWhileNoShortIf: Stmt<'input> = {
+    <offset:@L> "while" "(" <cond:Exp1> ")" <inner:StmtNoShortIf> => Stmt::While {
+        offset,
+        cond,
+        inner: Box::new(inner),
+    },
+}
+
+StmtForNoShortIf: Stmt<'input> = {
+    <offset:@L> "for" "(" <elem_type:SimpleType> <elem_ident:Ident> ":" <arr:Exp1> ")" <inner:StmtNoShortIf> => Stmt::For {
+        offset,
+        elem_type,
+        elem_ident,
+        arr,
+        inner: Box::new(inner),
+    },
+}
+
+Stmt: Stmt<'input> = {
+    <stmt:StmtNoTrail> => stmt,
+    <stmt:StmtIf> => stmt,
+    <stmt:StmtIfElse> => stmt,
+    <stmt:StmtWhile> => stmt,
+    <stmt:StmtFor> => stmt,
+};
+
+Arg: Arg<'input> = {
+    <arg_type:Type> <name:Ident> => Arg { arg_type, name }
+};
+
+FnDef: FnDef<'input> = {
+    <ret:Type> <ident:Ident> "(" <args:Comma<Arg>> ")" "{" <stmts:Stmt*> "}" => FnDef {
+        ret: Some(ret),
+        ident,
+        args,
+        stmts,
+    },
+    "void" <ident:Ident> "(" <args:Comma<Arg>> ")" "{" <stmts:Stmt*> "}" => FnDef {
+        ret: None,
+        ident,
+        args,
+        stmts,
+    },
+};
+
+Member: Member<'input> = {
+    <field_type:Type> <name:Ident> ";" => Member::Field(Field {field_type, name }),
+    <fndef:FnDef> => Member::Method(fndef),
+};
+
+ClassDef: ClassDef<'input> = {
+    "class" <ident:Ident> "{" <members:Member*> "}" => {
+        let mut fields = Vec::new();
+        let mut methods = Vec::new();
+        for member in members {
+            match member {
+                Member::Field(f) => fields.push(f),
+                Member::Method(m) => methods.push(m),
+            }
+        }
+        ClassDef {
+            ident,
+            parent: None,
+            fields,
+            methods,
+        }
+    },
+    "class" <ident:Ident> "extends" <parent:Ident> "{" <members:Member*> "}" => {
+        let mut fields = Vec::new();
+        let mut methods = Vec::new();
+        for member in members {
+            match member {
+                Member::Field(f) => fields.push(f),
+                Member::Method(m) => methods.push(m),
+            }
+        }
+        ClassDef {
+            ident,
+            parent: Some(parent),
+            fields,
+            methods,
+        }
+    },
+};
+
+Def: Def<'input> = {
+    <def:FnDef> => Def::Fn(def),
+    <def:ClassDef> => Def::Class(def),
+};
+
+pub Program: Vec<Def<'input>> = {
+    <defs:Def*> => defs,
+};

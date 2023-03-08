@@ -1,0 +1,14 @@
+#!/bin/bash
+
+set -e
+
+if (($# != 1)); then
+	echo "Usage: $0 <input file name>"
+	exit 1
+fi
+
+DIR=$(dirname $1)
+BASE=$(basename $1 .lat)
+./target/release/latte < "$1" > "$DIR/$BASE.s"
+nasm -f elf64 "$DIR/$BASE.s" -o "$DIR/$BASE.o"
+gcc -no-pie "$DIR/$BASE.o" "lib/runtime.o" -o "$DIR/$BASE"

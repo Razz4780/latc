@@ -1,0 +1,13 @@
+[package]
+name = "latc"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+authors = ["Michał Smolarek <msmolarekg@gmail.com>"]
+
+[dependencies]
+lalrpop-util = { version = "0.19", features = ["lexer"] }
+regex = "1"
+
+[build-dependencies]
+lalrpop = "0.19"
