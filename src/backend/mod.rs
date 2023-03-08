@@ -3,8 +3,8 @@ mod intervals;
 mod regalloc;
 
 use crate::middlend::HirProgram;
-use asm::AsmProgram;
+pub use asm::AsmProgram;
 
-pub fn process<'a>(program: HirProgram<'a>) -> AsmProgram<'a> {
+pub fn process(program: HirProgram<'_>) -> AsmProgram<'_> {
     AsmProgram::new(program)
 }

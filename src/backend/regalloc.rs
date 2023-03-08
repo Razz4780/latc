@@ -69,12 +69,7 @@ impl RegAllocator {
 
         let free_regs = ALLOCATABLE
             .into_iter()
-            .filter(|reg| {
-                handled
-                    .iter()
-                    .find(|elem| elem.1 == Slot::Reg(*reg))
-                    .is_none()
-            })
+            .filter(|reg| handled.iter().all(|elem| elem.1 != Slot::Reg(*reg)))
             .map(RegWithPreference)
             .collect();
 
