@@ -8,12 +8,12 @@ use super::{
 use crate::{
     ast::{self, UnOp},
     frontend::{Assignable, CallAddr, Expression, Statement},
-    id_gen::IdGenerator,
 };
 use std::{
     collections::{hash_map::Entry, HashMap},
     fmt::{self, Debug, Formatter},
     mem,
+    ops::RangeFrom,
 };
 
 #[derive(Default, Clone, Debug)]
@@ -71,13 +71,18 @@ impl<'a> HirFunction<'a> {
     }
 }
 
-#[derive(Default)]
-struct RegGenerator(IdGenerator);
+struct RegGenerator(RangeFrom<usize>);
+
+impl Default for RegGenerator {
+    fn default() -> Self {
+        Self(0..)
+    }
+}
 
 impl RegGenerator {
     pub fn gen(&mut self, size: Bytes) -> VReg {
         VReg {
-            id: VRegId(self.0.gen()),
+            id: VRegId(self.0.next().expect("no more unique identifiers")),
             size,
         }
     }
