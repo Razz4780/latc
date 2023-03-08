@@ -39,7 +39,7 @@ char * _fun_readString() {
     }
 
     size_t len = strlen(buffer);
-    if (buffer[len - 1] = '\n') {
+    if (buffer[len - 1] == '\n') {
         buffer[len - 1] = '\0';
     }
 

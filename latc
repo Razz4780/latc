@@ -2,13 +2,27 @@
 
 set -e
 
+COMPILER_PATH=./target/release/latc
+RUNTIME_PATH=./lib/runtime.o
+
 if (($# != 1)); then
-	echo "Usage: $0 <input file name>"
+	echo "Usage: $0 <input file name>" >&2
+	exit 1
+fi
+
+if [ ! -f "$COMPILER_PATH" ]; then
+	echo "latc compiler not found, build it with 'make compiler'" >&2
+	exit 1
+fi
+
+if [ ! -f "$RUNTIME_PATH" ]; then
+	echo "runtime not found, build it with 'make runtime'" >&2
 	exit 1
 fi
 
 DIR=$(dirname $1)
 BASE=$(basename $1 .lat)
-./target/release/latte < "$1" > "$DIR/$BASE.s"
+
+"$COMPILER_PATH" < "$1" > "$DIR/$BASE.s"
 nasm -f elf64 "$DIR/$BASE.s" -o "$DIR/$BASE.o"
-gcc -no-pie "$DIR/$BASE.o" "lib/runtime.o" -o "$DIR/$BASE"
+gcc -no-pie "$DIR/$BASE.o" "$RUNTIME_PATH" -o "$DIR/$BASE"
