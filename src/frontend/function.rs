@@ -1,12 +1,13 @@
 use crate::{
     ast::{BinOp, Exp, Item, Leaf, SimpleType, Stmt, Type, UnOp},
     error::LatteError,
-    frontend::declarations::{function::FnDecl, Context},
+    context::Function,
 };
 use std::{
     collections::{HashMap, HashSet},
     mem,
 };
+use super::fn_context::FnContext;
 
 #[derive(Debug)]
 pub enum Assignable<'a> {
@@ -177,7 +178,7 @@ impl<'a> Expression<'a> {
 
 #[derive(Clone, Copy)]
 struct ExpressionProcessor<'a, 'b> {
-    outer: &'b FunctionBuilder<'a>,
+    outer: &'b FunctionBuilder<'a, 'b>,
 }
 
 impl<'a, 'b> ExpressionProcessor<'a, 'b> {
@@ -185,35 +186,50 @@ impl<'a, 'b> ExpressionProcessor<'a, 'b> {
         self,
         expression: &Exp<'a>,
         expected: Option<Type<'a>>,
-        allow_subclassing: bool,
     ) -> Result<Expression<'a>, LatteError> {
         let exp = self.process(expression)?;
+        let ty = exp.get_type();
 
         match (exp.get_type(), expected) {
-            (t1, t2) if t1 == t2 => Ok(exp),
+            (t1, t2) if t1 == t2 => return Ok(exp),
             (
                 Some(Type::Simple(SimpleType::Class(c1))),
                 Some(Type::Simple(SimpleType::Class(c2))),
-            ) if allow_subclassing && self.outer.context.is_subclass(c1, c2) => Ok(exp),
-            _ => Err(LatteError::expected_type(expected, expression.offset())),
+            ) => {
+                let mut next = self.outer.ctx.get_class(c1);
+                while let Some(class) = next {
+                    if class.name() == c2 {
+                        return Ok(exp);
+                    }
+
+                    next = class.parent();
+                }
+            }
+            _ => {},
         }
+
+        Err(LatteError::expected_type(expected, expression.offset()))
     }
 
     fn process_callable(
         self,
         expression: &Exp<'a>,
-    ) -> Result<(Callable<'a>, &'b FnDecl<'a>), LatteError> {
+    ) -> Result<(Callable<'a>, &'b Function<'a>), LatteError> {
         let (callable, decl) = match expression {
             Exp::Member { inner, name } => {
                 let object = self.process(inner)?;
                 let class = object
                     .get_type()
-                    .and_then(Type::get_class)
+                    .and_then(Type::class_name)
                     .ok_or_else(|| LatteError::expected_class(inner.offset()))?;
-                let (decl_class, decl) = self
+                let method = self
                     .outer
-                    .context
-                    .get_method_of(class, name.inner)
+                    .ctx
+                    .get_class(class)
+                    .unwrap()
+                    .methods()
+                    .iter()
+                    .find(|m| m.as_fun().name() == name.inner)
                     .ok_or_else(|| {
                         LatteError::new_at(
                             format!("method \"{}\" not found in class \"{}\"", name.inner, class),
@@ -223,14 +239,14 @@ impl<'a, 'b> ExpressionProcessor<'a, 'b> {
 
                 (
                     Callable::Dynamic {
-                        class: decl_class,
-                        method: name.inner,
+                        class: method.origin_class(),
+                        method: method.as_fun().name(),
                         object,
                     },
                     decl,
                 )
             }
-            Exp::Var(var) => match self.outer.context.get_method(var.inner) {
+            Exp::Var(var) => match self.outer.ctx.get_method(var.inner) {
                 Some((class, decl)) => (
                     Callable::Dynamic {
                         class,
@@ -240,7 +256,7 @@ impl<'a, 'b> ExpressionProcessor<'a, 'b> {
                     decl,
                 ),
                 None => {
-                    let decl = self.outer.context.get_function(var.inner).ok_or_else(|| {
+                    let decl = self.outer.ctx.get_function(var.inner).ok_or_else(|| {
                         LatteError::new_at(
                             format!("undefined function \"{}\"", var.inner),
                             var.offset,
@@ -284,7 +300,7 @@ impl<'a, 'b> ExpressionProcessor<'a, 'b> {
                     .ok_or_else(|| LatteError::expected_class(inner.offset()))?;
                 let (decl_class, field_type) = self
                     .outer
-                    .context
+                    .ctx
                     .get_field_of(class, name.inner)
                     .ok_or_else(|| {
                     LatteError::new_at(
@@ -300,9 +316,9 @@ impl<'a, 'b> ExpressionProcessor<'a, 'b> {
             }
             Exp::Var(var) => {
                 if let Some(register) = self.get_var(var.inner) {
-                    (Assignable::local(register), self.outer.locations[register])
+                    (Assignable::local(register), self.outer.var_types[register])
                 } else if let Some((field_class, field_type)) =
-                    self.outer.context.get_field(var.inner)
+                    self.outer.ctx.get_field(var.inner)
                 {
                     (
                         Assignable::field(field_class, var.inner, self.outer.access_local(0)),
@@ -541,7 +557,7 @@ impl<'a, 'b> ExpressionProcessor<'a, 'b> {
                     })?;
                     let (decl_class, field_type) = self
                         .outer
-                        .context
+                        .ctx
                         .get_field_of(class, name.inner)
                         .ok_or_else(|| {
                             LatteError::new_at(
@@ -623,7 +639,7 @@ impl<'a, 'b> ExpressionProcessor<'a, 'b> {
             Exp::Var(var) => match self.get_var(var.inner) {
                 Some(location) => self.outer.access_local(location),
                 None => {
-                    if let Some((decl_class, field_type)) = self.outer.context.get_field(var.inner)
+                    if let Some((decl_class, field_type)) = self.outer.ctx.get_field(var.inner)
                     {
                         Expression::Field {
                             class: decl_class,
@@ -662,30 +678,31 @@ struct Scope<'a> {
     vars: HashMap<&'a str, usize>,
 }
 
-pub struct FunctionBuilder<'a> {
-    context: Context<'a>,
-    statements: Vec<Statement<'a>>,
+pub struct FunctionBuilder<'a, 'b> {
+    ctx: FnContext<'a, 'b>,
+    stmts: Vec<Statement<'a>>,
     scope: Vec<Scope<'a>>,
-    locations: Vec<Type<'a>>,
+    var_types: Vec<Type<'a>>,
 }
 
-impl<'a> FunctionBuilder<'a> {
-    pub fn new(context: Context<'a>) -> Self {
-        let args = context.args();
+impl<'a, 'b> FunctionBuilder<'a, 'b> {
+    pub fn new(ctx: FnContext<'a, 'b>) -> Self {
+        let args = ctx.args();
 
         let mut scope = Scope::default();
         scope.vars.reserve(args.len());
-        let mut locations = Vec::with_capacity(args.len());
-        for (arg_name, arg_type) in context.args() {
-            scope.vars.insert(arg_name, locations.len());
-            locations.push(*arg_type);
+        let mut var_types = Vec::with_capacity(args.len());
+
+        for arg in ctx.args() {
+            scope.vars.insert(arg.name, var_types.len());
+            var_types.push(arg.ty);
         }
 
         Self {
-            context,
-            statements: Default::default(),
+            ctx,
+            stmts: Default::default(),
             scope: vec![scope],
-            locations,
+            var_types,
         }
     }
 
@@ -693,11 +710,11 @@ impl<'a> FunctionBuilder<'a> {
         ExpressionProcessor { outer: self }
     }
 
-    fn check_type(&self, to_check: &Leaf<Type<'a>>) -> Result<(), LatteError> {
-        if let Some(class) = to_check.inner.get_class() {
-            self.context
+    fn check_type(&self, ty: &Leaf<Type<'a>>) -> Result<(), LatteError> {
+        if let Some(class) = ty.inner.get_class() {
+            self.ctx
                 .get_class(class)
-                .ok_or_else(|| LatteError::undefined_type(to_check.inner, to_check.offset))?;
+                .ok_or_else(|| LatteError::undefined_type(ty.inner, ty.offset))?;
         }
 
         Ok(())
@@ -706,7 +723,7 @@ impl<'a> FunctionBuilder<'a> {
     fn access_local(&self, register: usize) -> Expression<'a> {
         Expression::Local {
             location: register,
-            value_type: self.locations[register],
+            value_type: self.var_types[register],
         }
     }
 
@@ -720,16 +737,16 @@ impl<'a> FunctionBuilder<'a> {
             return None;
         }
 
-        let location = self.locations.len();
+        let location = self.var_types.len();
         scope.vars.insert(name, location);
-        self.locations.push(of_type);
+        self.var_types.push(of_type);
 
         Some(location)
     }
 
     fn new_anon_var(&mut self, of_type: Type<'a>) -> usize {
-        let location = self.locations.len();
-        self.locations.push(of_type);
+        let location = self.var_types.len();
+        self.var_types.push(of_type);
 
         location
     }
@@ -739,13 +756,13 @@ impl<'a> FunctionBuilder<'a> {
         statement: Stmt<'a>,
         buffer: &mut Vec<Statement<'a>>,
     ) -> Result<(), LatteError> {
-        mem::swap(&mut self.statements, buffer);
+        mem::swap(&mut self.stmts, buffer);
         self.scope.push(Default::default());
 
         self.add_statement(statement)?;
 
         self.scope.pop();
-        mem::swap(&mut self.statements, buffer);
+        mem::swap(&mut self.stmts, buffer);
 
         Ok(())
     }
@@ -763,12 +780,12 @@ impl<'a> FunctionBuilder<'a> {
                 object,
             } => {
                 let register = self.new_anon_var(Type::class(class));
-                self.statements.push(Statement::Assign {
+                self.stmts.push(Statement::Assign {
                     destination: Assignable::local(register),
                     expression: *object,
                 });
                 let object = self.access_local(register);
-                self.statements.push(Statement::Assign {
+                self.stmts.push(Statement::Assign {
                     destination: Assignable::field(class, field, object.clone()),
                     expression: Expression::Binary {
                         lhs: Expression::Field {
@@ -784,7 +801,7 @@ impl<'a> FunctionBuilder<'a> {
                     },
                 })
             }
-            Assignable::Local { var_idx } => self.statements.push(Statement::Assign {
+            Assignable::Local { var_idx } => self.stmts.push(Statement::Assign {
                 destination: Assignable::local(var_idx),
                 expression: Expression::Binary {
                     lhs: self.access_local(var_idx).into(),
@@ -796,16 +813,16 @@ impl<'a> FunctionBuilder<'a> {
             Assignable::Slot { array, index } => {
                 let int_array = Type::Arr(SimpleType::Int);
                 let array_register = self.new_anon_var(int_array);
-                self.statements.push(Statement::Assign {
+                self.stmts.push(Statement::Assign {
                     destination: Assignable::local(array_register),
                     expression: *array,
                 });
                 let index_register = self.new_anon_var(Type::INT);
-                self.statements.push(Statement::Assign {
+                self.stmts.push(Statement::Assign {
                     destination: Assignable::local(index_register),
                     expression: *index,
                 });
-                self.statements.push(Statement::Assign {
+                self.stmts.push(Statement::Assign {
                     destination: Assignable::slot(
                         self.access_local(array_register),
                         self.access_local(index_register),
@@ -850,13 +867,13 @@ impl<'a> FunctionBuilder<'a> {
         let array_type = Type::Arr(expected_type);
 
         let array_register = self.new_anon_var(array_type);
-        self.statements.push(Statement::Assign {
+        self.stmts.push(Statement::Assign {
             destination: Assignable::local(array_register),
             expression: array_exp,
         });
 
         let index_register = self.new_anon_var(Type::INT);
-        self.statements.push(Statement::Assign {
+        self.stmts.push(Statement::Assign {
             destination: Assignable::local(index_register),
             expression: Expression::LitInt(0),
         });
@@ -898,7 +915,7 @@ impl<'a> FunctionBuilder<'a> {
 
         self.scope.pop();
 
-        self.statements.push(Statement::While {
+        self.stmts.push(Statement::While {
             cond,
             inner: inner_buf,
         });
@@ -923,7 +940,7 @@ impl<'a> FunctionBuilder<'a> {
                 let expression = self
                     .expr()
                     .process_typed(&exp, expected_type.into(), true)?;
-                self.statements.push(Statement::Assign {
+                self.stmts.push(Statement::Assign {
                     destination,
                     expression,
                 });
@@ -932,7 +949,7 @@ impl<'a> FunctionBuilder<'a> {
                 let expression = self.expr().process_typed(&cond, Type::BOOL.into(), false)?;
                 let mut inner_if = Default::default();
                 self.process_substatement(*inner, &mut inner_if)?;
-                self.statements.push(Statement::Cond {
+                self.stmts.push(Statement::Cond {
                     cond: expression,
                     inner_if,
                     inner_else: Default::default(),
@@ -951,7 +968,7 @@ impl<'a> FunctionBuilder<'a> {
                 let mut inner_else_buf = Default::default();
                 self.process_substatement(*inner_else, &mut inner_else_buf)?;
 
-                self.statements.push(Statement::Cond {
+                self.stmts.push(Statement::Cond {
                     cond: expression,
                     inner_if: inner_if_buf,
                     inner_else: inner_else_buf,
@@ -976,7 +993,7 @@ impl<'a> FunctionBuilder<'a> {
                         )
                     })?;
 
-                    self.statements.push(Statement::Assign {
+                    self.stmts.push(Statement::Assign {
                         destination: Assignable::local(register),
                         expression,
                     });
@@ -992,19 +1009,19 @@ impl<'a> FunctionBuilder<'a> {
             } => self.process_for(elem_type, elem_ident, arr, *inner)?,
             Stmt::Ret { offset, exp } => match exp {
                 Some(exp) => {
-                    let ret = self.context.ret();
+                    let ret = self.ctx.ret().copied();
                     let expression = self.expr().process_typed(&exp, ret, true)?;
-                    self.statements.push(Statement::Return(expression));
+                    self.stmts.push(Statement::Return(expression));
                 }
                 None => {
-                    if self.context.ret().is_some() {
+                    if self.ctx.ret().is_some() {
                         return Err(LatteError::new_at(
                             "non-void function must return a value".into(),
                             offset,
                         ));
                     }
 
-                    self.statements.push(Statement::Return(Expression::Void));
+                    self.stmts.push(Statement::Return(Expression::Void));
                 }
             },
             Stmt::While { cond, inner, .. } => {
@@ -1012,7 +1029,7 @@ impl<'a> FunctionBuilder<'a> {
                 let mut inner_buf = Default::default();
                 self.process_substatement(*inner, &mut inner_buf)?;
 
-                self.statements.push(Statement::While {
+                self.stmts.push(Statement::While {
                     cond: expression,
                     inner: inner_buf,
                 });
@@ -1020,7 +1037,7 @@ impl<'a> FunctionBuilder<'a> {
             Stmt::Incr { loc } => self.process_mutation(&loc, 1)?,
             Stmt::Exp(exp) => {
                 let expression = self.expr().process(&exp)?;
-                self.statements.push(Statement::Expression(expression));
+                self.stmts.push(Statement::Expression(expression));
             }
         }
 
@@ -1105,17 +1122,17 @@ impl<'a> FunctionBuilder<'a> {
     }
 
     pub fn finish(self) -> Result<Vec<Statement<'a>>, LatteError> {
-        let (mut statements, stops) = Self::simplify_flow(self.statements);
+        let (mut statements, stops) = Self::simplify_flow(self.stmts);
 
-        match (self.context.ret(), stops, self.context.class_name()) {
+        match (self.ctx.ret(), stops, self.ctx.class_name()) {
             (Some(t), false, None) => Err(LatteError::new(format!(
                 "function \"{}\" must return a value of type {}",
-                self.context.name(),
+                self.ctx.name(),
                 t
             ))),
             (Some(t), false, Some(class)) => Err(LatteError::new(format!(
                 "method \"{}\" defined in class \"{}\" must return a value of type {}",
-                self.context.name(),
+                self.ctx.name(),
                 class,
                 t
             ))),

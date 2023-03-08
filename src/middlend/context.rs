@@ -1,10 +1,7 @@
-use super::{
-    layout::Layout,
-    size::{Bytes, GetSize},
-};
+use super::{layout::Layout, size::Bytes};
 use crate::{
     ast::Type,
-    frontend::{ClassDecl, Declarations, FnDecl, Program},
+    frontend::CheckedProgram,
 };
 use std::collections::{hash_map::Entry, HashMap};
 
@@ -17,50 +14,6 @@ pub enum Symbol<'a> {
     NewObject,
     Function(&'a str),
     VTable(&'a str),
-}
-
-#[derive(Debug, Clone)]
-pub struct Function<'a> {
-    args: Vec<(&'a str, Type<'a>)>,
-    ret: Option<Type<'a>>,
-}
-
-impl<'a> Function<'a> {
-    fn new(decl: &FnDecl<'a>) -> Self {
-        Self {
-            args: decl.args().to_vec(),
-            ret: decl.ret(),
-        }
-    }
-
-    pub fn args(&'a self) -> impl 'a + Iterator<Item = Bytes> {
-        self.args.iter().map(|(_, t)| t.size())
-    }
-
-    pub fn ret(&self) -> Option<Type<'a>> {
-        self.ret
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Method<'a> {
-    vtable_offset: i32,
-    origin_class: &'a str,
-    as_fun: Function<'a>,
-}
-
-impl<'a> Method<'a> {
-    pub fn origin_class(&self) -> &'a str {
-        self.origin_class
-    }
-
-    pub fn vtable_offset(&self) -> i32 {
-        self.vtable_offset
-    }
-
-    pub fn as_fun(&self) -> &Function<'a> {
-        &self.as_fun
-    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -188,7 +141,7 @@ impl<'a> Context<'a> {
         &self.classes
     }
 
-    pub fn new(program: &Program<'a>) -> Self {
+    pub fn new(program: &CheckedProgram<'a>) -> Self {
         let classes = Class::process(program.declarations());
 
         let functions = program

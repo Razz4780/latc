@@ -2,14 +2,12 @@ mod context;
 mod generator;
 mod hir;
 mod layout;
-mod size;
 
-pub use context::{Context, Function, Symbol};
+pub use context::{Context, Symbol};
 pub use generator::{HirFunction, HirLoc};
 pub use hir::{BinOp, BlockId, Hir, PhiOption, RelCond, VReg, VRegId, Value};
-pub use size::{Bytes, GetSize};
 
-use crate::frontend::{FunctionId, Program};
+use crate::frontend::{FunctionId, CheckedProgram};
 use generator::HirGenerator;
 use std::collections::HashMap;
 
@@ -28,11 +26,11 @@ impl<'a> HirProgram<'a> {
     }
 }
 
-pub fn process<'a>(program: Program<'a>) -> HirProgram<'a> {
+pub fn process<'a>(program: CheckedProgram<'a>) -> HirProgram<'a> {
     let context = Context::new(&program);
     let mut functions: HashMap<FunctionId<'a>, HirFunction<'a>> = Default::default();
 
-    for (name, stmts) in program.definitions() {
+    for (name, stmts) in program.defs() {
         let fun = match name {
             FunctionId::Global { name } => context.function(name),
             FunctionId::Method { name, class } => context.class(class).method(name).as_fun(),

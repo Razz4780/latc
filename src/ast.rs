@@ -167,17 +167,24 @@ impl<'a> Type<'a> {
         Self::Simple(SimpleType::Class(name))
     }
 
-    pub fn get_class(self) -> Option<&'a str> {
+    pub fn referenced_class(self) -> Option<&'a str> {
         match self {
             Self::Simple(t) => t.class(),
             Self::Arr(t) => t.class(),
         }
     }
 
-    pub fn get_elem_type(self) -> Option<SimpleType<'a>> {
+    pub fn elem_type(self) -> Option<SimpleType<'a>> {
         match self {
             Self::Arr(t) => Some(t),
             Self::Simple(..) => None,
+        }
+    }
+
+    pub fn class_name(self) -> Option<&'a str> {
+        match self {
+            Self::Simple(SimpleType::Class(c)) => Some(c),
+            _ => None,
         }
     }
 }

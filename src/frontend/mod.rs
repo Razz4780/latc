@@ -1,47 +1,50 @@
-mod declarations;
-mod program;
+mod fn_context;
+mod function;
 
-pub use self::{
-    declarations::{class::ClassDecl, function::FnDecl, Declarations},
-    program::{
-        function::{Assignable, CallAddr, Expression, Statement},
-        FunctionId, Program,
-    },
+use function::Statement;
+use std::{
+    collections::HashMap,
+    fmt::{self, Debug, Formatter},
 };
+use crate::{context::Context, error::LatteError, ast::Def};
 
-use self::{declarations::builder::DeclarationsBuilder, program::builder::ProgramBuilder};
-use crate::{ast::Def, error::LatteError};
+#[derive(PartialEq, Eq, Hash, Clone, Copy)]
+pub enum FunctionId<'a> {
+    Global { name: &'a str },
+    Method { name: &'a str, class: &'a str },
+}
 
-pub fn process(defs: Vec<Def<'_>>) -> Result<Program<'_>, LatteError> {
-    let declarations = {
-        let mut declarations_builder = DeclarationsBuilder::default();
-        for def in &defs {
-            match def {
-                Def::Fn(fun) => declarations_builder.add_function(fun)?,
-                Def::Class(class) => declarations_builder.add_class(class)?,
-            }
+impl<'a> Debug for FunctionId<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Global { name } => f.write_str(name),
+            Self::Method { name, class } => write!(f, "{}::{}", class, name),
         }
-        declarations_builder.build()?
-    };
+    }
+}
 
-    let program = {
-        let mut program_builder = ProgramBuilder::new(declarations);
-        for def in defs {
-            match def {
-                Def::Fn(fun) => program_builder.add_function(fun.ident.inner, fun.stmts)?,
-                Def::Class(class) => {
-                    for method in class.methods {
-                        program_builder.add_method(
-                            method.ident.inner,
-                            class.ident.inner,
-                            method.stmts,
-                        )?;
-                    }
-                }
-            }
-        }
-        program_builder.build()?
-    };
+pub struct CheckedProgram<'a> {
+    ctx: Context<'a>,
+    defs: HashMap<FunctionId<'a>, Vec<Statement<'a>>>,
+}
 
-    Ok(program)
+impl<'a> CheckedProgram<'a> {
+    pub fn new(defs: Vec<Def<'a>>) -> Result<(), LatteError> {
+        let context = Context::new(&defs)?;
+        todo!()
+    }
+
+    pub fn ctx(&self) -> &Context<'a> {
+        &self.ctx
+    }
+
+    pub fn defs(&self) -> &HashMap<FunctionId<'a>, Vec<Statement<'a>>> {
+        &self.defs
+    }
+}
+
+impl<'a> From<CheckedProgram<'a>> for Context<'a> {
+    fn from(value: CheckedProgram<'a>) -> Self {
+        value.ctx
+    }
 }
