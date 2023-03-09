@@ -10,7 +10,7 @@ use crate::{
 use std::{collections::HashMap, rc::Rc};
 
 impl<'a> FnDef<'a> {
-    fn visit_referenced_types<F: FnMut(&Leaf<Type<'a>>)>(&self, f: F) {
+    fn visit_referenced_types<F: FnMut(&Leaf<Type<'a>>)>(&self, mut f: F) {
         if let Some(r) = self.ret.as_ref() {
             f(r);
         }
@@ -21,7 +21,7 @@ impl<'a> FnDef<'a> {
 }
 
 impl<'a> ClassDef<'a> {
-    fn visit_referenced_types<F: FnMut(&Leaf<Type<'a>>)>(&self, f: F) {
+    fn visit_referenced_types<F: FnMut(&Leaf<Type<'a>>)>(&self, mut f: F) {
         if let Some(parent) = self.parent.as_ref() {
             f(&Leaf {
                 inner: Type::class(parent.inner),
@@ -34,7 +34,7 @@ impl<'a> ClassDef<'a> {
         }
 
         for method in &self.methods {
-            method.visit_referenced_types(f);
+            method.visit_referenced_types(&mut f);
         }
     }
 }

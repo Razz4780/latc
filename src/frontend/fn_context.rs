@@ -1,5 +1,5 @@
-use crate::{ast::Type, context::{Class, Function, Context, Argument}};
 use super::FunctionId;
+use crate::context::{Class, Context, Function};
 
 #[derive(Clone, Copy)]
 pub struct FnContext<'a, 'b> {
@@ -9,24 +9,20 @@ pub struct FnContext<'a, 'b> {
 }
 
 impl<'a, 'b> FnContext<'a, 'b> {
-    pub fn args(&self) -> &'b [Argument<'a>] {
-        self.function.args()
-    }
-
-    pub fn get_class(&self, name: &str) -> Option<&'b Class<'a>> {
+    pub fn class(&self, name: &str) -> Option<&'b Class<'a>> {
         self.context.classes().get(name).map(|c| c.as_ref())
     }
 
-    pub fn ret(&self) -> Option<&'b Type<'a>> {
-        self.function.ret()
+    pub fn function(&self, name: &str) -> Option<&'b Function<'a>> {
+        self.context.functions().get(name)
     }
 
-    pub fn name(&self) -> &'a str {
-        self.function.name()
+    pub fn current_class(&self) -> Option<&'b Class<'a>> {
+        self.class
     }
 
-    pub fn class_name(&self) -> Option<&'a str> {
-        self.class.map(Class::name)
+    pub fn current_function(&self) -> &'b Function<'a> {
+        self.function
     }
 }
 
@@ -36,7 +32,7 @@ impl<'a> Context<'a> {
             FunctionId::Global { name } => (self.functions().get(name)?, None),
             FunctionId::Method { name, class } => {
                 let class = self.classes().get(class)?;
-                let function = class.methods().iter().find(|m| m.as_fun().name() == *name)?.as_fun();
+                let function = class.method(name)?.as_fun();
                 (function, Some(class.as_ref()))
             }
         };

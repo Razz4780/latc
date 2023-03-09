@@ -2,17 +2,19 @@ mod builder;
 mod class;
 mod function;
 
-use crate::{error::LatteError, ast::{Leaf, Type, Def, ClassDef}};
-use std::{
-    collections::{HashMap, HashSet},
-    rc::Rc,
-    fmt::{self, Debug, Formatter},
+use crate::{
+    ast::{ClassDef, Def, Leaf, SimpleType, Type},
+    error::LatteError,
 };
 use builder::ContextBuilder;
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::{self, Debug, Formatter},
+    rc::Rc,
+};
 
+pub use class::{Class, Method};
 pub use function::{Argument, Function};
-pub use class::{Class,Method};
-
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Bytes {
@@ -46,22 +48,18 @@ impl From<Bytes> for usize {
 impl<'a> Type<'a> {
     pub fn size(self) -> Bytes {
         match self {
-            Self::Arr(..) | Self::STR => Bytes::B8,
+            Self::Arr(..) => Bytes::B8,
+            Self::Simple(SimpleType::Class(..)) => Bytes::B8,
+            Self::STR => Bytes::B8,
             Self::INT => Bytes::B4,
             Self::BOOL => Bytes::B1,
         }
     }
 }
 
-fn find_duplicate<'a, I: Iterator<Item = Leaf<&'a str>>>(idents: I) -> Option<Leaf<&'a str>> {
+fn find_duplicate<'a, I: Iterator<Item = Leaf<&'a str>>>(mut idents: I) -> Option<Leaf<&'a str>> {
     let mut seen = HashSet::new();
-    for ident in idents {
-        if !seen.insert(ident.inner) {
-            return Some(ident);
-        }
-    }
-
-    None
+    idents.find(|ident| !seen.insert(ident.inner))
 }
 
 #[derive(Debug)]
@@ -80,16 +78,23 @@ impl<'a> Context<'a> {
         for def in defs {
             match def {
                 Def::Class(class_def) => match class_def.parent {
-                    Some(parent) => todos_by_parent.entry(parent.inner).or_default().push(class_def),
+                    Some(parent) => todos_by_parent
+                        .entry(parent.inner)
+                        .or_default()
+                        .push(class_def),
                     None => work_queue.push(class_def),
-                }
-                Def::Fn(fn_def) => builder.add_function(&fn_def)?,
+                },
+                Def::Fn(fn_def) => builder.add_function(fn_def)?,
             }
         }
 
         while let Some(class_def) = work_queue.pop() {
-            builder.add_class(&class_def)?;
-            work_queue.extend(todos_by_parent.remove(class_def.ident.inner).unwrap_or_default());
+            builder.add_class(class_def)?;
+            work_queue.extend(
+                todos_by_parent
+                    .remove(class_def.ident.inner)
+                    .unwrap_or_default(),
+            );
         }
 
         builder.build()

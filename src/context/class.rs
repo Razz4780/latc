@@ -29,6 +29,16 @@ pub struct Field<'a> {
     offset: usize,
 }
 
+impl<'a> Field<'a> {
+    pub fn name(&self) -> &'a str {
+        self.name
+    }
+
+    pub fn ty(&self) -> &Type<'a> {
+        &self.ty
+    }
+}
+
 #[derive(Debug)]
 pub struct Class<'a> {
     parent: Option<Rc<Class<'a>>>,
@@ -139,7 +149,7 @@ impl<'a> Class<'a> {
             }
         }
 
-        if prev.ret() != new.ret.map(|l| &l.inner) {
+        if prev.ret() != new.ret.map(|l| l.inner).as_ref() {
             let msg = match prev.ret() {
                 Some(t) => format!("invalid return type in method override, expected {}", t),
                 None => "invalid return type in method override, expected void".into(),
@@ -150,8 +160,12 @@ impl<'a> Class<'a> {
         Ok(())
     }
 
-    pub fn methods(&self) -> &[Method<'a>] {
-        self.methods.as_slice()
+    pub fn method(&self, name: &str) -> Option<&Method<'a>> {
+        self.methods.iter().find(|m| m.as_fun().name() == name)
+    }
+
+    pub fn field(&self, name: &str) -> Option<&Field<'a>> {
+        self.fields.iter().find(|f| f.name() == name)
     }
 
     pub fn name(&self) -> &'a str {

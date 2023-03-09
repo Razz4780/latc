@@ -5,22 +5,19 @@ lalrpop_mod!(#[allow(clippy::all)] pub grammar);
 
 use grammar::ProgramParser;
 use latc::{
-    backend::{self, AsmProgram},
     error::{ErrorContext, LatteError},
-    frontend, middlend,
+    frontend::CheckedProgram,
 };
 use std::{
     io::{self, Read},
     process::ExitCode,
 };
 
-fn process(input: &str) -> Result<AsmProgram<'_>, LatteError> {
+fn process(input: &str) -> Result<CheckedProgram<'_>, LatteError> {
     let defs = ProgramParser::new().parse(input)?;
-    let prog = frontend::process(defs)?;
-    let hir_prog = middlend::process(prog);
-    let asm_prog = backend::process(hir_prog);
+    let checked_program = CheckedProgram::new(defs)?;
 
-    Ok(asm_prog)
+    Ok(checked_program)
 }
 
 fn main() -> ExitCode {
@@ -34,8 +31,8 @@ fn main() -> ExitCode {
     }
 
     match process(&input) {
-        Ok(prog) => {
-            println!("{}", prog);
+        Ok(..) => {
+            // println!("{}", prog);
 
             eprintln!("OK");
 
