@@ -1,0 +1,4 @@
+int main() {
+    boolean a = true || error();
+    return 0;
+}

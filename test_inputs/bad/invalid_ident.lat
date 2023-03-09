@@ -1,0 +1,8 @@
+int _asd() {
+    return 0;
+}
+
+int main() {
+    _asd();
+    return 0;    
+}

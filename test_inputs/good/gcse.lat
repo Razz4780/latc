@@ -1,0 +1,25 @@
+void complex(int a, int b) {
+    int c = (a + b) * 5;
+
+    if (c == 0) {
+        int d = (a + b) * 5;
+        printInt(d);
+    } else {
+        int e = a + a;
+        printInt(c);
+        printInt(e);
+    }
+
+    int f = (a + b) * 5;
+    printInt(f);
+    printInt(f);
+
+    int g = a + a;
+    printInt(g);
+}
+
+int main() {
+    int a = readInt();
+    complex(7, a);
+    return 0;
+}

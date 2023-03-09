@@ -1,0 +1,19 @@
+class A extends B {
+    int do() {
+        return 0;
+    }
+}
+
+class B extends C {
+
+}
+
+class C {
+    boolean do() {
+        return true;
+    }
+}
+
+int main() {
+    return 0;
+}

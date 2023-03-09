@@ -1,0 +1,37 @@
+int main() {
+    int a = readInt();
+    int c = a * 9;
+    printInt(c);
+
+    if (a > 0) {
+        c = readInt();
+    } else {
+        c = readInt() * 2;
+    }
+
+    printInt(c);
+
+    return 0;
+}
+
+int fun() {
+    int a = readInt();
+
+    if (readInt() > 12) {
+        printInt(a);
+        if (readInt() > 13) {
+            printInt(a);
+            return 1;
+        } else {
+            printInt(a);
+            return 2;
+        }
+    } else {
+        printInt(a);
+        return 44;
+    }
+
+    printInt(a);
+
+    return 98;
+}

@@ -1,0 +1,8 @@
+class A1 extends A0 {
+    int t;
+}
+
+int main() {
+    A1 a = new A1;
+    return 0;
+}

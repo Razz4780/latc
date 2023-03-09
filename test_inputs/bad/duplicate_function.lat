@@ -1,0 +1,11 @@
+int fun() {
+    return 0;
+}
+
+boolean fun() {
+    return false;
+}
+
+int main() {
+    return 0;
+}

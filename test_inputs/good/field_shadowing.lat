@@ -1,0 +1,26 @@
+class A {
+    int field;
+
+    int getField() {
+        return field;
+    }
+}
+
+class B extends A {
+    boolean field;
+}
+
+int main() {
+    A a = new A;
+    B b = new B;
+
+    a.field = 4;
+    b.field = true;
+
+    printInt(a.getField());
+    if (b.field) {
+        printString("OK");
+    }
+
+    return 0;
+}

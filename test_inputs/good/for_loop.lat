@@ -1,0 +1,17 @@
+void for1() {
+    int[] a = (int[])null;
+    a = new int[10];
+
+    for (int i : a) {
+        i = 14;
+        boolean i = false;
+        i = true;
+        string a = "dummy";
+    }
+
+    a = new int[2];
+}
+
+int main() {
+    return 0;
+}

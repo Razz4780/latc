@@ -1,0 +1,9 @@
+int dummy() {
+    printString("dummy");
+    return 2;
+}
+
+int main() {
+    int a = dummy();
+    return 0;
+}

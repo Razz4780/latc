@@ -1,0 +1,25 @@
+int main() {
+    if (readInt() > 0) {
+        printInt(2);
+    } else {
+        printInt(3);
+    }
+
+    int a = readInt();
+    boolean b = a != 12;
+    boolean c = b == (readInt() > 12);
+
+    if (c) {
+        printInt(1);
+    } else {
+        printInt(3);
+    }
+
+    if (b) {
+        printInt(0);
+    } else {
+        printInt(3);
+    }
+
+    return 0;
+}

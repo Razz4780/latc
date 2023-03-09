@@ -1,0 +1,15 @@
+class A {
+    A make() {
+        return new A;
+    }
+}
+
+class B extends A {
+    B make() {
+        return new B;
+    }
+}
+
+int main() {
+    return 0;
+}

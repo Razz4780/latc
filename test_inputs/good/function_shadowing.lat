@@ -1,0 +1,10 @@
+class A {
+    int printInt(int a) {
+        return 0;
+    }
+}
+
+int main() {
+    A a = new A;
+    return a.printInt(13);
+}

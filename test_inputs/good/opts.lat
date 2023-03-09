@@ -1,0 +1,23 @@
+int main() {
+    int a = 0;
+    int b = a + 8;
+    int c = b / readInt();
+
+    if (b > 0) {
+        int d = 27 + 18 + b;
+    } else {
+        int d = readInt();
+    }
+
+    printInt(18 + b);
+
+    while (b > 0) {
+        a++;
+        printInt(a);
+        if (a > 10) {
+            return 0;
+        }
+    }
+
+    return 0;
+}
