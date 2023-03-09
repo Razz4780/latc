@@ -24,5 +24,5 @@ DIR=$(dirname $1)
 BASE=$(basename $1 .lat)
 
 "$COMPILER_PATH" < "$1" > "$DIR/$BASE.s"
-nasm -f elf64 "$DIR/$BASE.s" -o "$DIR/$BASE.o"
-gcc -no-pie "$DIR/$BASE.o" "$RUNTIME_PATH" -o "$DIR/$BASE"
+# nasm -f elf64 "$DIR/$BASE.s" -o "$DIR/$BASE.o"
+# gcc -no-pie "$DIR/$BASE.o" "$RUNTIME_PATH" -o "$DIR/$BASE.out"

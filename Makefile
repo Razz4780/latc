@@ -9,4 +9,4 @@ compiler:
 	cargo build --release
 
 clean:
-	rm -rf target lib/runtime.o
+	rm -rf target lib/runtime.o test_inputs/*/*.s test_inputs/*/*.o test_inputs/*/*.out test_inputs/*/*.output2

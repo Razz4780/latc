@@ -97,6 +97,14 @@ impl<'a> Context<'a> {
             );
         }
 
+        if let Some(class) = todos_by_parent.into_values().flatten().next() {
+            let parent = class.parent.unwrap();
+            return Err(LatteError::new_at(
+                format!("unknown parent class \"{}\"", parent.inner),
+                parent.offset,
+            ));
+        }
+
         builder.build()
     }
 

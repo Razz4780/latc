@@ -2,3 +2,8 @@
 **/*.rs.bk
 .env
 .vscode
+lib/runtime.o
+test_inputs/*/*.s
+test_inputs/*/*.o
+test_inputs/*/*.out
+test_inputs/*/*.output2
