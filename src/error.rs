@@ -92,37 +92,6 @@ macro_rules! error {
 pub(crate) use bail;
 pub(crate) use error;
 
-// #[derive(Debug)]
-// pub struct LatteError {
-//     msg: String,
-//     offset: Option<usize>,
-// }
-
-// impl LatteError {
-//     pub fn new(msg: String) -> Self {
-//         Self { msg, offset: None }
-//     }
-
-//     pub fn new_at(msg: String, offset: usize) -> Self {
-//         Self {
-//             msg,
-//             offset: Some(offset),
-//         }
-//     }
-
-//     pub fn expected_arr(offset: usize) -> Self {
-//         Self::new_at("invalid expression type, expected an array".into(), offset)
-//     }
-
-//     pub fn undefined_type(undefined: Type<'_>, offset: usize) -> Self {
-//         Self::new_at(format!("undefined type \"{}\"", undefined), offset)
-//     }
-
-//     pub fn expected_class(offset: usize) -> Self {
-//         Self::new_at("invalid expression type, expected a class".into(), offset)
-//     }
-// }
-
 #[derive(Debug)]
 pub struct StaticCheckErrorDisplay {
     error: StaticCheckError,
