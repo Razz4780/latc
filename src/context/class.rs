@@ -1,4 +1,4 @@
-use super::{function::Function, layout::Layout};
+use super::{function::Function, layout::Layout, Bytes, Context};
 use crate::{
     ast::{ClassDef, FnDef, Type},
     context::GetSize,
@@ -88,7 +88,7 @@ impl<'a> Class<'a> {
         let prev_size = fields
             .last()
             .map(|f| f.offset + i32::from(f.ty.size()))
-            .unwrap_or_default();
+            .unwrap_or(Context::CLASS_VTABLE_OFFSET + i32::from(Bytes::B8));
         let mut layout = Layout::new(prev_size);
         for field in &def.fields {
             fields.push(Field {
@@ -111,6 +111,7 @@ impl<'a> Class<'a> {
                 Some(prev) => {
                     Self::check_override(&prev.function, method)?;
                     prev.function = function;
+                    prev.origin_class = def.ident.inner;
                 }
                 None => {
                     let vtable_idx = methods.last().map(|m| m.vtable_idx + 1).unwrap_or_default();
