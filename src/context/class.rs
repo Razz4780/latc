@@ -1,20 +1,25 @@
-use super::function::Function;
+use super::{function::Function, layout::Layout};
 use crate::{
     ast::{ClassDef, FnDef, Type},
-    error::LatteError,
+    context::GetSize,
+    error::{self, StaticCheckError},
 };
 use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 pub struct Method<'a> {
     function: Function<'a>,
-    vtable_idx: usize,
+    vtable_idx: i32,
     origin_class: &'a str,
 }
 
 impl<'a> Method<'a> {
     pub fn as_fun(&self) -> &Function<'a> {
         &self.function
+    }
+
+    pub fn vtable_idx(&self) -> i32 {
+        self.vtable_idx
     }
 
     pub fn origin_class(&self) -> &'a str {
@@ -26,7 +31,7 @@ impl<'a> Method<'a> {
 pub struct Field<'a> {
     name: &'a str,
     ty: Type<'a>,
-    offset: usize,
+    offset: i32,
 }
 
 impl<'a> Field<'a> {
@@ -36,6 +41,10 @@ impl<'a> Field<'a> {
 
     pub fn ty(&self) -> &Type<'a> {
         &self.ty
+    }
+
+    pub fn offset(&self) -> i32 {
+        self.offset
     }
 }
 
@@ -48,46 +57,44 @@ pub struct Class<'a> {
 }
 
 impl<'a> Class<'a> {
-    pub fn new(def: &ClassDef<'a>, parent: Option<Rc<Class<'a>>>) -> Result<Self, LatteError> {
+    pub fn new(
+        def: &ClassDef<'a>,
+        parent: Option<Rc<Class<'a>>>,
+    ) -> Result<Self, StaticCheckError> {
         let dup = super::find_duplicate(def.fields.iter().map(|f| f.name));
         if let Some(dup) = dup {
-            return Err(LatteError::new_at(
-                format!(
-                    "field \"{}\" already defined in class \"{}\"",
-                    dup.inner, def.ident.inner
-                ),
+            error::bail!(
                 dup.offset,
-            ));
+                "field \"{}\" already defined in class \"{}\"",
+                dup.inner,
+                def.ident.inner,
+            );
         }
 
         let dup = super::find_duplicate(def.methods.iter().map(|m| m.ident));
         if let Some(dup) = dup {
-            return Err(LatteError::new_at(
-                format!(
-                    "method \"{}\" already defined in class \"{}\"",
-                    dup.inner, dup.inner
-                ),
+            error::bail!(
                 dup.offset,
-            ));
+                "method \"{}\" already defined in class \"{}\"",
+                dup.inner,
+                dup.inner,
+            );
         }
 
         let mut fields = parent
             .as_ref()
             .map(|p| p.fields.clone())
             .unwrap_or_default();
+        let prev_size = fields
+            .last()
+            .map(|f| f.offset + i32::from(f.ty.size()))
+            .unwrap_or_default();
+        let mut layout = Layout::new(prev_size);
         for field in &def.fields {
-            let mut offset = fields
-                .last()
-                .map(|f| f.offset + usize::from(f.ty.size()))
-                .unwrap_or_default();
-            let field_size = usize::from(field.field_type.inner.size());
-            if offset % field_size != 0 {
-                offset += field_size - (offset % field_size);
-            }
             fields.push(Field {
                 name: field.name.inner,
                 ty: field.field_type.inner,
-                offset,
+                offset: layout.add_entry(field.field_type.inner),
             })
         }
 
@@ -124,37 +131,40 @@ impl<'a> Class<'a> {
         })
     }
 
-    fn check_override(prev: &Function, new: &FnDef) -> Result<(), LatteError> {
+    fn check_override(prev: &Function, new: &FnDef) -> Result<(), StaticCheckError> {
         let expected_arguments = prev.args().len() - 1;
         if new.args.len() != expected_arguments {
-            return Err(LatteError::new_at(
-                format!(
-                    "invalid arguments count in method override, expected {} argument(s)",
-                    expected_arguments
-                ),
+            error::bail!(
                 new.offset(),
-            ));
+                "invalid arguments count, expected {} argument(s)",
+                expected_arguments,
+            );
         }
 
         let zipped_args = new.args.iter().zip(prev.args().iter().skip(1));
         for ((new, prev), i) in zipped_args.zip(1..) {
             if new.arg_type.inner != prev.ty {
-                return Err(LatteError::new_at(
-                    format!(
-                        "invalid argument {} type in method override, expected {}",
-                        i, prev.ty
-                    ),
+                error::bail!(
                     new.arg_type.offset,
-                ));
+                    "invalid argument {} type in method override, expected {}",
+                    i,
+                    prev.ty,
+                );
             }
         }
 
         if prev.ret() != new.ret.map(|l| l.inner).as_ref() {
-            let msg = match prev.ret() {
-                Some(t) => format!("invalid return type in method override, expected {}", t),
-                None => "invalid return type in method override, expected void".into(),
-            };
-            return Err(LatteError::new_at(msg, new.offset()));
+            match prev.ret() {
+                Some(t) => error::bail!(
+                    new.offset(),
+                    "invalid return type in method override, expected {}",
+                    t
+                ),
+                None => error::bail!(
+                    new.offset(),
+                    "invalid return type in method override, expected void"
+                ),
+            }
         }
 
         Ok(())
@@ -165,7 +175,7 @@ impl<'a> Class<'a> {
     }
 
     pub fn field(&self, name: &str) -> Option<&Field<'a>> {
-        self.fields.iter().find(|f| f.name() == name)
+        self.fields.iter().rev().find(|f| f.name() == name)
     }
 
     pub fn name(&self) -> &'a str {
@@ -174,5 +184,16 @@ impl<'a> Class<'a> {
 
     pub fn parent(&self) -> Option<&Class<'a>> {
         self.parent.as_deref()
+    }
+
+    pub fn size(&self) -> i32 {
+        self.fields
+            .last()
+            .map(|f| f.offset + i32::from(f.ty().size()))
+            .unwrap_or_default()
+    }
+
+    pub fn methods(&self) -> &[Method<'a>] {
+        self.methods.as_slice()
     }
 }

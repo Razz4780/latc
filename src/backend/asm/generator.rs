@@ -4,10 +4,10 @@ use crate::{
         intervals::{Interval, IntervalBuilder},
         regalloc::{RegAllocator, Slot, SCRATCH_1, SCRATCH_2},
     },
+    context::{Bytes, Context, GetSize},
     frontend::FunctionId,
     middlend::{
-        BinOp, BlockId, Bytes, Context, GetSize, Hir, HirFunction, HirLoc, HirProgram, RelCond,
-        Symbol, VReg, VRegId, Value,
+        BinOp, BlockId, Hir, HirFunction, HirLoc, HirProgram, RelCond, Symbol, VReg, VRegId, Value,
     },
 };
 use std::{
@@ -35,7 +35,7 @@ impl<'a, 'b> SymbolResolver<'a, 'b> {
             Symbol::Function(name) => Operand::Label(Label::Function(name)),
             Symbol::NewArray => Operand::Label(Label::Lib("newArray")),
             Symbol::NewObject => Operand::Label(Label::Lib("newObject")),
-            Symbol::VTable(class) if self.context.class(class).methods().is_empty() => {
+            Symbol::VTable(class) if self.context.class(class).unwrap().methods().is_empty() => {
                 Operand::Imm(0, Bytes::B8)
             }
             Symbol::VTable(class) => Operand::Label(Label::VTable(class)),
@@ -1185,13 +1185,24 @@ impl<'a> AsmProgram<'a> {
 
         for (name, fun) in hir_prog.functions() {
             let params = match name {
-                FunctionId::Global { name } => hir_prog.context().function(name).args().collect(),
+                FunctionId::Global { name } => hir_prog
+                    .context()
+                    .function(name)
+                    .unwrap()
+                    .args()
+                    .iter()
+                    .map(|a| a.ty.size())
+                    .collect(),
                 FunctionId::Method { name, class } => hir_prog
                     .context()
                     .class(class)
+                    .unwrap()
                     .method(name)
+                    .unwrap()
                     .as_fun()
                     .args()
+                    .iter()
+                    .map(|a| a.ty.size())
                     .collect(),
             };
             let res = AsmFunctionBuilder::new(*name, params, fun, symbols).run();
@@ -1209,10 +1220,10 @@ impl<'a> AsmProgram<'a> {
                 if methods.is_empty() {
                     return None;
                 }
-                methods.sort_unstable_by_key(|(_, m)| m.vtable_offset());
+                methods.sort_unstable_by_key(|m| m.vtable_idx());
                 let methods = methods
                     .into_iter()
-                    .map(|(n, m)| Label::Method(m.origin_class(), n))
+                    .map(|m| Label::Method(m.origin_class(), m.as_fun().name()))
                     .collect::<Vec<_>>();
 
                 Some((Label::VTable(name), methods))

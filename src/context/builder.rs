@@ -5,7 +5,7 @@ use super::{
 };
 use crate::{
     ast::{ClassDef, FnDef, Leaf, Type},
-    error::LatteError,
+    error::{self, StaticCheckError},
 };
 use std::{collections::HashMap, rc::Rc};
 
@@ -59,28 +59,29 @@ impl<'a> Default for ContextBuilder<'a> {
 }
 
 impl<'a> ContextBuilder<'a> {
-    pub fn add_function(&mut self, dirty: &FnDef<'a>) -> Result<(), LatteError> {
+    pub fn add_function(&mut self, dirty: &FnDef<'a>) -> Result<(), StaticCheckError> {
         if self.functions.contains_key(dirty.ident.inner) {
-            return Err(LatteError::new_at(
-                format!("function \"{}\" already defined", dirty.ident.inner),
+            error::bail!(
                 dirty.ident.offset,
-            ));
+                "function \"{}\" already defined",
+                dirty.ident.inner,
+            );
         }
 
         if dirty.ident.inner == "main" {
             let returns_int = dirty.ret.as_ref().map(|l| l.inner) == Some(Type::INT);
             if !returns_int {
-                return Err(LatteError::new_at(
-                    "\"main\" function must return a value of type int".into(),
+                error::bail!(
                     dirty.offset(),
-                ));
+                    "\"main\" function must return a value of type int",
+                );
             }
 
             if !dirty.args.is_empty() {
-                return Err(LatteError::new_at(
-                    "\"main\" function must not take any arguments".into(),
+                error::bail!(
                     dirty.offset(),
-                ));
+                    "\"main\" function must not take any arguments",
+                );
             }
         }
 
@@ -97,26 +98,29 @@ impl<'a> ContextBuilder<'a> {
         Ok(())
     }
 
-    pub fn add_class(&mut self, dirty: &ClassDef<'a>) -> Result<(), LatteError> {
+    pub fn add_class(&mut self, dirty: &ClassDef<'a>) -> Result<(), StaticCheckError> {
         if self.classes.contains_key(dirty.ident.inner) {
-            return Err(LatteError::new_at(
-                format!("class \"{}\" already defined", dirty.ident.inner),
+            error::bail!(
                 dirty.ident.offset,
-            ));
+                "class \"{}\" already defined",
+                dirty.ident.inner,
+            );
         };
 
-        let parent = match dirty.parent {
-            Some(parent) if parent.inner == dirty.ident.inner => {
-                return Err(LatteError::new_at(
-                    format!("subclassing an undefined class \"{}\"", parent.inner),
-                    parent.offset,
-                ));
-            }
-            Some(parent) => Some(self.classes.get(parent.inner).cloned().ok_or_else(|| {
-                LatteError::new_at(format!("undefined class {}", parent.inner), parent.offset)
-            })?),
-            None => None,
-        };
+        let parent =
+            match dirty.parent {
+                Some(parent) if parent.inner == dirty.ident.inner => {
+                    error::bail!(
+                        parent.offset,
+                        "subclassing an undefined class \"{}\"",
+                        parent.inner,
+                    );
+                }
+                Some(parent) => Some(self.classes.get(parent.inner).cloned().ok_or_else(|| {
+                    error::error!(parent.offset, "undefined class {}", parent.inner)
+                })?),
+                None => None,
+            };
 
         let decl = Class::new(dirty, parent)?;
         self.classes.insert(dirty.ident.inner, decl.into());
@@ -130,18 +134,15 @@ impl<'a> ContextBuilder<'a> {
         Ok(())
     }
 
-    pub fn build(self) -> Result<Context<'a>, LatteError> {
+    pub fn build(self) -> Result<Context<'a>, StaticCheckError> {
         for (class, offset) in self.class_references.into_iter() {
             if !self.classes.contains_key(class) {
-                return Err(LatteError::new_at(
-                    format!("undefined class \"{}\"", class),
-                    offset,
-                ));
+                error::bail!(offset, "undefined class \"{}\"", class,);
             }
         }
 
         if !self.functions.contains_key("main") {
-            return Err(LatteError::new("\"main\" function not defined".into()));
+            error::bail!(None, "\"main\" function not defined");
         }
 
         Ok(Context {

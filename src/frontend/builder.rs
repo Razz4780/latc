@@ -1,50 +1,15 @@
-use super::fn_context::FnContext;
+use super::{fn_context::FnContext, types::*};
 use crate::{
     ast::{BinOp, Exp, Item, Leaf, SimpleType, Stmt, Type, UnOp},
     context::Function,
-    error::LatteError,
+    error::{self, StaticCheckError},
 };
 use std::{
     collections::{HashMap, HashSet},
     mem,
 };
 
-#[derive(Debug)]
-pub enum Assignable<'a> {
-    Local {
-        var_idx: usize,
-    },
-    Field {
-        field: &'a str,
-        object: Box<Expression<'a>>,
-    },
-    Slot {
-        array: Box<Expression<'a>>,
-        index: Box<Expression<'a>>,
-    },
-}
-
-impl<'a> Assignable<'a> {
-    fn local(var_idx: usize) -> Self {
-        Self::Local { var_idx }
-    }
-
-    fn field(field: &'a str, object: Expression<'a>) -> Self {
-        Self::Field {
-            field,
-            object: object.into(),
-        }
-    }
-
-    fn slot(array: Expression<'a>, index: Expression<'a>) -> Self {
-        Self::Slot {
-            array: array.into(),
-            index: index.into(),
-        }
-    }
-}
-
-enum Callable<'a> {
+pub enum Callable<'a> {
     Static {
         name: &'a str,
     },
@@ -60,118 +25,6 @@ impl<'a> Callable<'a> {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum CallAddr<'a> {
-    Static { name: &'a str },
-    Dynamic { method: &'a str },
-    NewObject { class: &'a str },
-    NewArray { inner: SimpleType<'a> },
-    AddStrings,
-    CmpStrings,
-}
-
-#[derive(Debug)]
-pub enum Statement<'a> {
-    Cond {
-        cond: Expression<'a>,
-        inner_if: Vec<Statement<'a>>,
-        inner_else: Vec<Statement<'a>>,
-    },
-    Assign {
-        destination: Assignable<'a>,
-        expression: Expression<'a>,
-    },
-    Expression(Expression<'a>),
-    While {
-        cond: Expression<'a>,
-        inner: Vec<Statement<'a>>,
-    },
-    Return(Expression<'a>),
-}
-
-#[derive(Debug, Clone)]
-pub enum Expression<'a> {
-    Void,
-    Null(Type<'a>),
-    LitInt(i32),
-    LitStr(&'a str),
-    LitBool(bool),
-    Local {
-        location: usize,
-        value_type: Type<'a>,
-    },
-    Call {
-        addr: CallAddr<'a>,
-        args: Vec<Expression<'a>>,
-        ret: Option<Type<'a>>,
-    },
-    Unary {
-        op: UnOp,
-        exp: Box<Expression<'a>>,
-    },
-    Binary {
-        lhs: Box<Expression<'a>>,
-        op: BinOp,
-        rhs: Box<Expression<'a>>,
-        value_type: SimpleType<'a>,
-    },
-    Slot {
-        array: Box<Expression<'a>>,
-        index: Box<Expression<'a>>,
-        value_type: SimpleType<'a>,
-    },
-    Field {
-        field: &'a str,
-        object: Box<Expression<'a>>,
-        value_type: Type<'a>,
-    },
-    Length {
-        array: Box<Expression<'a>>,
-    },
-}
-
-impl<'a> Expression<'a> {
-    fn zero(of_type: Type<'a>) -> Self {
-        match of_type {
-            Type::Arr(..) => Self::Null(of_type),
-            Type::Simple(t) => match t {
-                SimpleType::Bool => Self::LitBool(false),
-                SimpleType::Int => Self::LitInt(0),
-                SimpleType::Str => Self::LitStr(""),
-                SimpleType::Class(..) => Self::Null(of_type),
-            },
-        }
-    }
-
-    pub fn get_type(&self) -> Option<Type<'a>> {
-        match self {
-            Self::Void => None,
-            Self::Null(t) => (*t).into(),
-            Self::LitBool(..) => Type::BOOL.into(),
-            Self::LitInt(..) => Type::INT.into(),
-            Self::LitStr(..) => Type::STR.into(),
-            Self::Local { value_type, .. } => (*value_type).into(),
-            Self::Call { ret, .. } => *ret,
-            Self::Unary { op: UnOp::Neg, .. } => Type::INT.into(),
-            Self::Unary { op: UnOp::Not, .. } => Type::BOOL.into(),
-            Self::Binary { value_type, .. } => Type::Simple(*value_type).into(),
-            Self::Slot { value_type, .. } => Type::Simple(*value_type).into(),
-            Self::Field { value_type, .. } => (*value_type).into(),
-            Self::Length { .. } => Type::INT.into(),
-        }
-    }
-
-    fn exits(&self) -> bool {
-        matches!(
-            self,
-            Self::Call {
-                addr: CallAddr::Static { name: "error" },
-                ..
-            }
-        )
-    }
-}
-
 #[derive(Clone, Copy)]
 struct ExpressionProcessor<'a, 'b> {
     outer: &'b FunctionBuilder<'a, 'b>,
@@ -182,7 +35,7 @@ impl<'a, 'b> ExpressionProcessor<'a, 'b> {
         self,
         expression: &Exp<'a>,
         expected: Option<Type<'a>>,
-    ) -> Result<Expression<'a>, LatteError> {
+    ) -> Result<Expression<'a>, StaticCheckError> {
         let exp = self.process(expression)?;
 
         match (exp.get_type(), expected) {
@@ -203,20 +56,23 @@ impl<'a, 'b> ExpressionProcessor<'a, 'b> {
             _ => {}
         }
 
-        Err(LatteError::expected_type(expected, expression.offset()))
+        Err(StaticCheckError::expected_type(
+            expected,
+            expression.offset(),
+        ))
     }
 
     fn process_callable(
         self,
         expression: &Exp<'a>,
-    ) -> Result<(Callable<'a>, &'b Function<'a>), LatteError> {
+    ) -> Result<(Callable<'a>, &'b Function<'a>), StaticCheckError> {
         match expression {
             Exp::Member { inner, name } => {
                 let object = self.process(inner)?;
                 let class = object
                     .get_type()
                     .and_then(Type::class_name)
-                    .ok_or_else(|| LatteError::expected_class(inner.offset()))?;
+                    .ok_or_else(|| StaticCheckError::expected_class(inner.offset()))?;
                 let method = self
                     .outer
                     .ctx
@@ -224,9 +80,11 @@ impl<'a, 'b> ExpressionProcessor<'a, 'b> {
                     .unwrap()
                     .method(name.inner)
                     .ok_or_else(|| {
-                        LatteError::new_at(
-                            format!("method \"{}\" not found in class \"{}\"", name.inner, class),
+                        error::error!(
                             name.offset,
+                            "method \"{}\" not found in class \"{}\"",
+                            name.inner,
+                            class,
                         )
                     })?;
 
@@ -256,27 +114,22 @@ impl<'a, 'b> ExpressionProcessor<'a, 'b> {
                     let f = self.outer.ctx.function(var.inner)?;
                     Some((Callable::Static { name: f.name() }, f))
                 })
-                .ok_or_else(|| {
-                    LatteError::new_at(format!("undefined function \"{}\"", var.inner), var.offset)
-                }),
-            _ => Err(LatteError::new_at(
-                "invalid call operand".into(),
-                expression.offset(),
-            )),
+                .ok_or_else(|| error::error!(var.offset, "undefined function \"{}\"", var.inner,)),
+            _ => error::bail!(expression.offset(), "invalid call operand"),
         }
     }
 
     fn process_assignable(
         self,
         expression: &Exp<'a>,
-    ) -> Result<(Assignable<'a>, Type<'a>), LatteError> {
+    ) -> Result<(Assignable<'a>, Type<'a>), StaticCheckError> {
         match expression {
             Exp::Index { inner, index } => {
                 let array = self.process(inner)?;
                 let expected_type = array
                     .get_type()
                     .and_then(Type::elem_type)
-                    .ok_or_else(|| LatteError::expected_arr(inner.offset()))?;
+                    .ok_or_else(|| StaticCheckError::expected_arr(inner.offset()))?;
                 let index = self.process_typed(index, Type::INT.into())?;
 
                 Ok((Assignable::slot(array, index), Type::Simple(expected_type)))
@@ -286,7 +139,7 @@ impl<'a, 'b> ExpressionProcessor<'a, 'b> {
                 let class = object
                     .get_type()
                     .and_then(Type::class_name)
-                    .ok_or_else(|| LatteError::expected_class(inner.offset()))?;
+                    .ok_or_else(|| StaticCheckError::expected_class(inner.offset()))?;
                 self.outer
                     .ctx
                     .class(class)
@@ -294,9 +147,11 @@ impl<'a, 'b> ExpressionProcessor<'a, 'b> {
                     .field(name.inner)
                     .map(|f| (Assignable::field(f.name(), object), *f.ty()))
                     .ok_or_else(|| {
-                        LatteError::new_at(
-                            format!("field \"{}\" not found in class \"{}\"", name.inner, class),
+                        error::error!(
                             name.offset,
+                            "field \"{}\" not found in class \"{}\"",
+                            name.inner,
+                            class,
                         )
                     })
             }
@@ -311,13 +166,8 @@ impl<'a, 'b> ExpressionProcessor<'a, 'b> {
                         )
                     })
                 })
-                .ok_or_else(|| {
-                    LatteError::new_at(format!("undefined variable \"{}\"", var.inner), var.offset)
-                }),
-            _ => Err(LatteError::new_at(
-                "invalid assignment operand".into(),
-                expression.offset(),
-            )),
+                .ok_or_else(|| error::error!(var.offset, "undefined variable \"{}\"", var.inner,)),
+            _ => error::bail!(expression.offset(), "invalid assignment operand",),
         }
     }
 
@@ -326,11 +176,11 @@ impl<'a, 'b> ExpressionProcessor<'a, 'b> {
         lhs: &Exp<'a>,
         op: BinOp,
         rhs: &Exp<'a>,
-    ) -> Result<Expression<'a>, LatteError> {
+    ) -> Result<Expression<'a>, StaticCheckError> {
         let left = self.process(lhs)?;
         let left_type = left
             .get_type()
-            .ok_or_else(|| LatteError::new_at("expected a value".into(), lhs.offset()))?;
+            .ok_or_else(|| error::error!(lhs.offset(), "expected a value"))?;
 
         let expression = match (left_type, op) {
             (Type::BOOL, BinOp::And | BinOp::Or) => {
@@ -349,7 +199,10 @@ impl<'a, 'b> ExpressionProcessor<'a, 'b> {
                 }
             }
             (_, BinOp::And | BinOp::Or) => {
-                return Err(LatteError::expected_type(Some(Type::BOOL), lhs.offset()))
+                return Err(StaticCheckError::expected_type(
+                    Some(Type::BOOL),
+                    lhs.offset(),
+                ))
             }
             (_, BinOp::EQ | BinOp::NEQ) => {
                 let right = self.process_typed(rhs, left_type.into())?;
@@ -432,13 +285,16 @@ impl<'a, 'b> ExpressionProcessor<'a, 'b> {
                     },
                 }
             }
-            (_, BinOp::Add) => {
-                return Err(LatteError::new_at(
-                    "invalid expression type, expected int or string".into(),
+            (_, BinOp::Add) => error::bail!(
+                lhs.offset(),
+                "invalid expression type, expected int or string",
+            ),
+            (_, _) => {
+                return Err(StaticCheckError::expected_type(
+                    Type::INT.into(),
                     lhs.offset(),
                 ))
             }
-            (_, _) => return Err(LatteError::expected_type(Type::INT.into(), lhs.offset())),
         };
 
         Ok(expression)
@@ -448,7 +304,7 @@ impl<'a, 'b> ExpressionProcessor<'a, 'b> {
         self,
         function: &Exp<'a>,
         arguments: &[Exp<'a>],
-    ) -> Result<Expression<'a>, LatteError> {
+    ) -> Result<Expression<'a>, StaticCheckError> {
         let (callable, decl) = self.process_callable(function)?;
         let expected = if callable.is_dynamic() {
             &decl.args()[1..]
@@ -457,20 +313,18 @@ impl<'a, 'b> ExpressionProcessor<'a, 'b> {
         };
 
         if arguments.len() != expected.len() {
-            return Err(LatteError::new_at(
-                format!(
-                    "invalid argument count in a function call, expected {} argument(s)",
-                    expected.len()
-                ),
+            error::bail!(
                 function.offset(),
-            ));
+                "invalid argument count in a function call, expected {} argument(s)",
+                expected.len(),
+            );
         }
 
         let mut args = arguments
             .iter()
             .zip(expected)
             .map(|(arg, expected)| self.process_typed(arg, expected.ty.into()))
-            .collect::<Result<Vec<_>, LatteError>>()?;
+            .collect::<Result<Vec<_>, StaticCheckError>>()?;
 
         match callable {
             Callable::Dynamic { method, object } => {
@@ -490,7 +344,7 @@ impl<'a, 'b> ExpressionProcessor<'a, 'b> {
         }
     }
 
-    fn process(self, expression: &Exp<'a>) -> Result<Expression<'a>, LatteError> {
+    fn process(self, expression: &Exp<'a>) -> Result<Expression<'a>, StaticCheckError> {
         let result = match expression {
             Exp::App {
                 function,
@@ -503,7 +357,7 @@ impl<'a, 'b> ExpressionProcessor<'a, 'b> {
                 let value_type = arr
                     .get_type()
                     .and_then(Type::elem_type)
-                    .ok_or_else(|| LatteError::expected_arr(inner.offset()))?;
+                    .ok_or_else(|| StaticCheckError::expected_arr(inner.offset()))?;
 
                 let idx = self.process_typed(index, Type::INT.into())?;
 
@@ -526,9 +380,9 @@ impl<'a, 'b> ExpressionProcessor<'a, 'b> {
                         .get_type()
                         .and_then(Type::class_name)
                         .ok_or_else(|| {
-                            LatteError::new_at(
-                                "invalid expression type, expected a class or an array".into(),
+                            error::error!(
                                 inner.offset(),
+                                "invalid expression type, expected a class or an array",
                             )
                         })?;
                     let field = self
@@ -537,12 +391,11 @@ impl<'a, 'b> ExpressionProcessor<'a, 'b> {
                         .class(class)
                         .and_then(|c| c.field(name.inner))
                         .ok_or_else(|| {
-                            LatteError::new_at(
-                                format!(
-                                    "field \"{}\" not found in class \"{}\"",
-                                    name.inner, class
-                                ),
+                            error::error!(
                                 name.offset,
+                                "field \"{}\" not found in class \"{}\"",
+                                name.inner,
+                                class
                             )
                         })?;
 
@@ -561,7 +414,7 @@ impl<'a, 'b> ExpressionProcessor<'a, 'b> {
                 let class = value_type
                     .inner
                     .class_name()
-                    .ok_or_else(|| LatteError::expected_class(inner.offset))?;
+                    .ok_or_else(|| StaticCheckError::expected_class(inner.offset))?;
                 self.outer.check_type(&value_type)?;
 
                 Expression::Call {
@@ -586,10 +439,7 @@ impl<'a, 'b> ExpressionProcessor<'a, 'b> {
             }
             Exp::Null { cast, .. } => {
                 if cast.inner.class_name().is_none() && cast.inner.elem_type().is_none() {
-                    return Err(LatteError::new_at(
-                        "invalid type, expected a class or an array".into(),
-                        cast.offset,
-                    ));
+                    error::bail!(cast.offset, "invalid type, expected a class or an array",);
                 }
                 self.outer.check_type(cast)?;
 
@@ -627,9 +477,7 @@ impl<'a, 'b> ExpressionProcessor<'a, 'b> {
                             value_type: *f.ty(),
                         })
                 })
-                .ok_or_else(|| {
-                    LatteError::new_at(format!("undefined variable \"{}\"", var.inner), var.offset)
-                })?,
+                .ok_or_else(|| error::error!(var.offset, "undefined variable \"{}\"", var.inner))?,
         };
 
         Ok(result)
@@ -685,10 +533,10 @@ impl<'a, 'b> FunctionBuilder<'a, 'b> {
         ExpressionProcessor { outer: self }
     }
 
-    fn check_type(&self, ty: &Leaf<Type<'a>>) -> Result<(), LatteError> {
+    fn check_type(&self, ty: &Leaf<Type<'a>>) -> Result<(), StaticCheckError> {
         if let Some(class) = ty.inner.referenced_class() {
             if self.ctx.class(class).is_none() {
-                return Err(LatteError::undefined_type(ty.inner, ty.offset));
+                return Err(StaticCheckError::undefined_type(ty.inner, ty.offset));
             }
         }
 
@@ -730,7 +578,7 @@ impl<'a, 'b> FunctionBuilder<'a, 'b> {
         &mut self,
         statement: Stmt<'a>,
         buffer: &mut Vec<Statement<'a>>,
-    ) -> Result<(), LatteError> {
+    ) -> Result<(), StaticCheckError> {
         mem::swap(&mut self.stmts, buffer);
         self.scope.push(Default::default());
 
@@ -742,10 +590,13 @@ impl<'a, 'b> FunctionBuilder<'a, 'b> {
         Ok(())
     }
 
-    fn process_mutation(&mut self, loc: &Exp<'a>, change: i32) -> Result<(), LatteError> {
+    fn process_mutation(&mut self, loc: &Exp<'a>, change: i32) -> Result<(), StaticCheckError> {
         let (destination, expected_type) = self.expr().process_assignable(loc)?;
         if expected_type != Type::INT {
-            return Err(LatteError::expected_type(Type::INT.into(), loc.offset()));
+            return Err(StaticCheckError::expected_type(
+                Type::INT.into(),
+                loc.offset(),
+            ));
         }
 
         match destination {
@@ -822,14 +673,14 @@ impl<'a, 'b> FunctionBuilder<'a, 'b> {
         elem_ident: Leaf<&'a str>,
         array: Exp<'a>,
         inner: Stmt<'a>,
-    ) -> Result<(), LatteError> {
+    ) -> Result<(), StaticCheckError> {
         let array_exp = self.expr().process(&array)?;
         let expected_type = array_exp
             .get_type()
             .and_then(|t| t.elem_type())
-            .ok_or_else(|| LatteError::expected_arr(array.offset()))?;
+            .ok_or_else(|| StaticCheckError::expected_arr(array.offset()))?;
         if elem_type.inner != expected_type {
-            return Err(LatteError::expected_type(
+            return Err(StaticCheckError::expected_type(
                 Type::Simple(expected_type).into(),
                 elem_type.offset,
             ));
@@ -894,7 +745,7 @@ impl<'a, 'b> FunctionBuilder<'a, 'b> {
         Ok(())
     }
 
-    pub fn add_statement(&mut self, statement: Stmt<'a>) -> Result<(), LatteError> {
+    pub fn add_statement(&mut self, statement: Stmt<'a>) -> Result<(), StaticCheckError> {
         match statement {
             Stmt::Empty => {}
             Stmt::Block { inner, .. } => {
@@ -953,10 +804,7 @@ impl<'a, 'b> FunctionBuilder<'a, 'b> {
                     };
 
                     let register = self.new_var(var.inner, item_type.inner).ok_or_else(|| {
-                        LatteError::new_at(
-                            format!("variable \"{}\" already declared", var.inner),
-                            var.offset,
-                        )
+                        error::error!(var.offset, "variable \"{}\" already declared", var.inner,)
                     })?;
 
                     self.stmts.push(Statement::Assign {
@@ -981,10 +829,7 @@ impl<'a, 'b> FunctionBuilder<'a, 'b> {
                 }
                 None => {
                     if self.ctx.current_function().ret().is_some() {
-                        return Err(LatteError::new_at(
-                            "non-void function must return a value".into(),
-                            offset,
-                        ));
+                        error::bail!(offset, "non-void function must return a value",);
                     }
 
                     self.stmts.push(Statement::Return(Expression::Void));
@@ -1010,31 +855,35 @@ impl<'a, 'b> FunctionBuilder<'a, 'b> {
         Ok(())
     }
 
-    pub fn finish(self) -> Result<Vec<Statement<'a>>, LatteError> {
+    pub fn finish(self) -> Result<Vec<Statement<'a>>, StaticCheckError> {
         let (mut statements, stops) = simplify_flow(self.stmts);
 
-        match (
+        let statements = match (
             self.ctx.current_function().ret(),
             stops,
             self.ctx.current_class(),
         ) {
-            (Some(t), false, None) => Err(LatteError::new(format!(
+            (Some(t), false, None) => error::bail!(
+                None,
                 "function \"{}\" must return a value of type {}",
                 self.ctx.current_function().name(),
                 t
-            ))),
-            (Some(t), false, Some(class)) => Err(LatteError::new(format!(
+            ),
+            (Some(t), false, Some(class)) => error::bail!(
+                None,
                 "method \"{}\" defined in class \"{}\" must return a value of type {}",
                 self.ctx.current_function().name(),
                 class.name(),
                 t
-            ))),
+            ),
             (None, false, _) => {
                 statements.push(Statement::Return(Expression::Void));
-                Ok(statements)
+                statements
             }
-            _ => Ok(statements),
-        }
+            _ => statements,
+        };
+
+        Ok(statements)
     }
 }
 

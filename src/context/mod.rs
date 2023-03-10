@@ -1,10 +1,11 @@
 mod builder;
 mod class;
 mod function;
+mod layout;
 
 use crate::{
     ast::{ClassDef, Def, Leaf, SimpleType, Type},
-    error::LatteError,
+    error::{self, StaticCheckError},
 };
 use builder::ContextBuilder;
 use std::{
@@ -35,7 +36,7 @@ impl Debug for Bytes {
     }
 }
 
-impl From<Bytes> for usize {
+impl From<Bytes> for i32 {
     fn from(value: Bytes) -> Self {
         match value {
             Bytes::B8 => 8,
@@ -45,14 +46,26 @@ impl From<Bytes> for usize {
     }
 }
 
-impl<'a> Type<'a> {
-    pub fn size(self) -> Bytes {
+pub trait GetSize {
+    fn size(&self) -> Bytes;
+}
+
+impl<'a> GetSize for Type<'a> {
+    fn size(&self) -> Bytes {
         match self {
             Self::Arr(..) => Bytes::B8,
-            Self::Simple(SimpleType::Class(..)) => Bytes::B8,
-            Self::STR => Bytes::B8,
-            Self::INT => Bytes::B4,
-            Self::BOOL => Bytes::B1,
+            Self::Simple(s) => s.size(),
+        }
+    }
+}
+
+impl<'a> GetSize for SimpleType<'a> {
+    fn size(&self) -> Bytes {
+        match self {
+            SimpleType::Class(..) => Bytes::B8,
+            SimpleType::Str => Bytes::B8,
+            SimpleType::Int => Bytes::B4,
+            SimpleType::Bool => Bytes::B1,
         }
     }
 }
@@ -69,7 +82,11 @@ pub struct Context<'a> {
 }
 
 impl<'a> Context<'a> {
-    pub fn new(defs: &[Def<'a>]) -> Result<Self, LatteError> {
+    pub const ARRAY_ELEMS_OFFSET: i32 = 0;
+    pub const ARRAY_LENGTH_OFFSET: i32 = 8;
+    pub const CLASS_VTABLE_OFFSET: i32 = 0;
+
+    pub fn new(defs: &[Def<'a>]) -> Result<Self, StaticCheckError> {
         let mut builder = ContextBuilder::default();
 
         let mut todos_by_parent: HashMap<&'a str, Vec<&ClassDef<'a>>> = Default::default();
@@ -99,10 +116,7 @@ impl<'a> Context<'a> {
 
         if let Some(class) = todos_by_parent.into_values().flatten().next() {
             let parent = class.parent.unwrap();
-            return Err(LatteError::new_at(
-                format!("unknown parent class \"{}\"", parent.inner),
-                parent.offset,
-            ));
+            error::bail!(parent.offset, "unknown parent class \"{}\"", parent.inner);
         }
 
         builder.build()
@@ -112,145 +126,18 @@ impl<'a> Context<'a> {
         &self.functions
     }
 
+    pub fn function(&self, name: &str) -> Option<&Function<'a>> {
+        self.functions.get(name)
+    }
+
     pub fn classes(&self) -> &HashMap<&'a str, Rc<Class<'a>>> {
         &self.classes
     }
 
-    // pub fn function_context(self: Rc<Self>, name: &'a str) -> Option<Context<'a>> {
-    //     if self.functions.contains_key(name) {
-    //         Some(Context {
-    //             declarations: self,
-    //             class_name: None,
-    //             name,
-    //         })
-    //     } else {
-    //         None
-    //     }
-    // }
-
-    // pub fn method_context(
-    //     self: Rc<Self>,
-    //     name: &'a str,
-    //     class_name: &'a str,
-    // ) -> Option<Context<'a>> {
-    //     if let Some(class_context) = self.classes.get(class_name) {
-    //         if class_context.methods().iter().any(|m| m.0 == name) {
-    //             return Some(Context {
-    //                 declarations: self,
-    //                 class_name: Some(class_name),
-    //                 name,
-    //             });
-    //         }
-    //     }
-
-    //     None
-    // }
+    pub fn class(&self, name: &str) -> Option<&Class<'a>> {
+        self.classes.get(name).map(Rc::as_ref)
+    }
 }
-
-// pub struct Context<'a> {
-//     declarations: Rc<Declarations<'a>>,
-//     class_name: Option<&'a str>,
-//     name: &'a str,
-// }
-
-// impl<'a> Context<'a> {
-//     pub fn name(&self) -> &'a str {
-//         self.name
-//     }
-
-//     pub fn class_name(&self) -> Option<&'a str> {
-//         self.class_name
-//     }
-
-//     fn function_context(&self) -> &Function<'a> {
-//         match self.class_name {
-//             Some(class) => {
-//                 &self
-//                     .declarations
-//                     .classes()
-//                     .get(class)
-//                     .expect("this class should exist")
-//                     .methods()
-//                     .iter()
-//                     .find(|m| m.0 == self.name)
-//                     .expect("this method should exist")
-//                     .1
-//             }
-//             None => self
-//                 .declarations
-//                 .functions()
-//                 .get(self.name)
-//                 .expect("this function should exist"),
-//         }
-//     }
-
-//     pub fn args(&self) -> &[(&'a str, Type<'a>)] {
-//         self.function_context().args()
-//     }
-
-//     pub fn ret(&self) -> Option<Type<'a>> {
-//         self.function_context().ret()
-//     }
-
-//     pub fn get_class(&self, class: &'a str) -> Option<&Class<'a>> {
-//         self.declarations.classes().get(class)
-//     }
-
-//     pub fn get_function(&self, name: &'a str) -> Option<&Function<'a>> {
-//         self.declarations.functions().get(name)
-//     }
-
-//     pub fn get_field(&self, name: &'a str) -> Option<(&'a str, Type<'a>)> {
-//         self.get_field_of(self.class_name?, name)
-//     }
-
-//     pub fn get_field_of(&self, mut class: &'a str, name: &'a str) -> Option<(&'a str, Type<'a>)> {
-//         loop {
-//             let decl = self.declarations.classes().get(class)?;
-//             let res = decl.fields().iter().find(|f| f.0 == name);
-//             if let Some((_, t)) = res {
-//                 return Some((class, *t));
-//             }
-
-//             class = decl.parent()?;
-//         }
-//     }
-
-//     pub fn get_method(&self, name: &'a str) -> Option<(&'a str, &Function<'a>)> {
-//         self.get_method_of(self.class_name?, name)
-//     }
-
-//     pub fn get_method_of(
-//         &self,
-//         mut class: &'a str,
-//         name: &'a str,
-//     ) -> Option<(&'a str, &Function<'a>)> {
-//         loop {
-//             let decl = self.declarations.classes().get(class)?;
-//             let m = decl.methods().iter().find(|m| m.0 == name);
-//             if let Some((_, method)) = m {
-//                 return Some((class, method));
-//             }
-
-//             class = decl.parent()?;
-//         }
-//     }
-
-//     pub fn is_subclass(&self, subclass: &str, superclass: &str) -> bool {
-//         let mut class = self.declarations.classes().get_key_value(subclass);
-//         while let Some((name, decl)) = class {
-//             if *name == superclass {
-//                 return true;
-//             }
-
-//             class = decl
-//                 .parent()
-//                 .and_then(|parent| self.declarations.classes().get_key_value(parent));
-//         }
-
-//         false
-//     }
-// }
 
 #[cfg(test)]
 mod test {
@@ -258,10 +145,9 @@ mod test {
     use crate::{
         ast::{Arg, Def, FnDef, Leaf, Type},
         context::builder::ContextBuilder,
-        error::LatteError,
     };
 
-    fn make_ctx<'a>(defs: &[Def<'a>]) -> Result<Context<'a>, LatteError> {
+    fn make_ctx<'a>(defs: &[Def<'a>]) -> Result<Context<'a>, StaticCheckError> {
         let mut builder = ContextBuilder::default();
         for def in defs {
             match def {

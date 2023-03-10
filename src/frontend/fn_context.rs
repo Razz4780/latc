@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 use super::FunctionId;
 use crate::context::{Class, Context, Function};
 
@@ -8,15 +10,15 @@ pub struct FnContext<'a, 'b> {
     class: Option<&'b Class<'a>>,
 }
 
+impl<'a, 'b> Deref for FnContext<'a, 'b> {
+    type Target = Context<'a>;
+
+    fn deref(&self) -> &Self::Target {
+        self.context
+    }
+}
+
 impl<'a, 'b> FnContext<'a, 'b> {
-    pub fn class(&self, name: &str) -> Option<&'b Class<'a>> {
-        self.context.classes().get(name).map(|c| c.as_ref())
-    }
-
-    pub fn function(&self, name: &str) -> Option<&'b Function<'a>> {
-        self.context.functions().get(name)
-    }
-
     pub fn current_class(&self) -> Option<&'b Class<'a>> {
         self.class
     }
@@ -29,11 +31,11 @@ impl<'a, 'b> FnContext<'a, 'b> {
 impl<'a> Context<'a> {
     pub fn fn_context<'b>(&'b self, id: &FunctionId<'a>) -> Option<FnContext<'a, 'b>> {
         let (function, class) = match id {
-            FunctionId::Global { name } => (self.functions().get(name)?, None),
+            FunctionId::Global { name } => (self.function(name)?, None),
             FunctionId::Method { name, class } => {
-                let class = self.classes().get(class)?;
+                let class = self.class(class)?;
                 let function = class.method(name)?.as_fun();
-                (function, Some(class.as_ref()))
+                (function, Some(class))
             }
         };
 

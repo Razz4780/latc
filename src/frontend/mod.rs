@@ -1,12 +1,15 @@
 mod builder;
 mod fn_context;
+mod types;
 
-use crate::{ast::Def, context::Context, error::LatteError};
-use builder::{FunctionBuilder, Statement};
+use crate::{ast::Def, context::Context, error::StaticCheckError};
+use builder::FunctionBuilder;
 use std::{
     collections::HashMap,
     fmt::{self, Debug, Formatter},
 };
+
+pub use types::*;
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub enum FunctionId<'a> {
@@ -29,7 +32,7 @@ pub struct CheckedProgram<'a> {
 }
 
 impl<'a> CheckedProgram<'a> {
-    pub fn new(dirty: Vec<Def<'a>>) -> Result<Self, LatteError> {
+    pub fn new(dirty: Vec<Def<'a>>) -> Result<Self, StaticCheckError> {
         let ctx = Context::new(&dirty)?;
         let mut defs = HashMap::new();
 
@@ -76,5 +79,11 @@ impl<'a> CheckedProgram<'a> {
 
     pub fn defs(&self) -> &HashMap<FunctionId<'a>, Vec<Statement<'a>>> {
         &self.defs
+    }
+}
+
+impl<'a> From<CheckedProgram<'a>> for Context<'a> {
+    fn from(value: CheckedProgram<'a>) -> Self {
+        value.ctx
     }
 }

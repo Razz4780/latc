@@ -1,8 +1,7 @@
-use super::{
-    context::Symbol,
-    size::{Bytes, GetSize},
+use crate::{
+    ast,
+    context::{Bytes, GetSize},
 };
-use crate::ast;
 use std::{
     fmt::{self, Debug, Formatter},
     ops::{Add, Sub},
@@ -58,6 +57,17 @@ impl GetSize for VReg {
     fn size(&self) -> Bytes {
         self.size
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Symbol<'a> {
+    Literal(&'a str),
+    AddStrings,
+    CmpStrings,
+    NewArray,
+    NewObject,
+    Function(&'a str),
+    VTable(&'a str),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]

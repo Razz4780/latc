@@ -1,12 +1,9 @@
 mod opts;
 
-use super::{
-    context::{Class, Context, Function, Symbol},
-    hir::{BinOp, BlockId, Hir, PhiOption, RelCond, VReg, VRegId, Value},
-    size::{Bytes, GetSize},
-};
+use super::hir::{BinOp, BlockId, Hir, PhiOption, RelCond, Symbol, VReg, VRegId, Value};
 use crate::{
     ast::{self, UnOp},
+    context::{Bytes, Context, Function, GetSize},
     frontend::{Assignable, CallAddr, Expression, Statement},
 };
 use std::{
@@ -153,8 +150,8 @@ impl<'a, 'b> HirGenerator<'a, 'b> {
         let mut reg_gen = RegGenerator::default();
 
         let mut block = BlockBuilder::default();
-        for (var, size) in fun.args().enumerate() {
-            let reg = reg_gen.gen(size);
+        for (var, arg) in fun.args().iter().enumerate() {
+            let reg = reg_gen.gen(arg.ty.size());
             block.define(var, reg.into());
         }
 
@@ -393,16 +390,12 @@ impl<'a, 'b> HirGenerator<'a, 'b> {
         elem.into()
     }
 
-    fn process_field_expr(
-        &mut self,
-        class: &str,
-        field: &str,
-        object: &Expression<'a>,
-    ) -> Value<'a> {
-        let field = self.context.class(class).field(field);
+    fn process_field_expr(&mut self, field: &str, object: &Expression<'a>) -> Value<'a> {
+        let class = object.get_type().unwrap().class_name().unwrap();
+        let field = self.context.class(class).unwrap().field(field).unwrap();
 
         let object = self.process_expr(object).unwrap();
-        let result = self.reg_gen.gen(field.of_type().size());
+        let result = self.reg_gen.gen(field.ty().size());
 
         self.active_block().emit(Hir::Load {
             base: object,
@@ -430,44 +423,43 @@ impl<'a, 'b> HirGenerator<'a, 'b> {
                 (Symbol::NewArray.into(), Bytes::B8.into())
             }
             CallAddr::NewObject { class } => {
-                let size = self.context.class(class).size();
+                let size = self.context.class(class).unwrap().size();
                 processed_args.push(Value::ImmB4(size));
                 processed_args.push(Value::Symbol(Symbol::VTable(class)));
                 (Symbol::NewObject.into(), Bytes::B8.into())
             }
             CallAddr::Static { name } => {
-                let function = self.context.function(name);
+                let function = self.context.function(name).unwrap();
                 (
                     Symbol::Function(name).into(),
-                    function.ret().as_ref().map(GetSize::size),
+                    function.ret().map(GetSize::size),
                 )
             }
-            CallAddr::Dynamic { class, method } => {
-                let method = self.context.class(class).method(method);
+            CallAddr::Dynamic { method } => {
+                let class = args[0].get_type().unwrap().class_name().unwrap();
 
                 let object = self.process_expr(&args[0]).unwrap();
                 processed_args.push(object);
                 args = &args[1..];
 
+                let method = self.context.class(class).unwrap().method(method).unwrap();
+
                 let vtable = self.reg_gen.gen(Bytes::B8);
                 self.active_block().emit(Hir::Load {
                     base: object,
                     index: None,
-                    displacement: Class::vtable_offset(),
+                    displacement: Context::CLASS_VTABLE_OFFSET,
                     dst: vtable,
                 });
                 let fun = self.reg_gen.gen(Bytes::B8);
                 self.active_block().emit(Hir::Load {
                     base: vtable.into(),
                     index: None,
-                    displacement: method.vtable_offset(),
+                    displacement: method.vtable_idx() * i32::from(Bytes::B8),
                     dst: fun,
                 });
 
-                (
-                    fun.into(),
-                    method.as_fun().ret().as_ref().map(GetSize::size),
-                )
+                (fun.into(), method.as_fun().ret().map(GetSize::size))
             }
         };
 
@@ -490,12 +482,9 @@ impl<'a, 'b> HirGenerator<'a, 'b> {
                 self.process_binary_expr(lhs, *op, rhs).into()
             }
             Expression::Call { addr, args, .. } => self.process_call_expr(addr, args),
-            Expression::Field {
-                class,
-                field,
-                object,
-                ..
-            } => self.process_field_expr(class, field, object).into(),
+            Expression::Field { field, object, .. } => {
+                self.process_field_expr(field, object).into()
+            }
             Expression::Length { array } => {
                 let array = self.process_expr(array).unwrap();
                 let result = self.reg_gen.gen(Bytes::B4);
@@ -624,12 +613,9 @@ impl<'a, 'b> HirGenerator<'a, 'b> {
 
     fn process_assign_stmt(&mut self, ass: &Assignable<'a>, expr: &Expression<'a>) {
         match ass {
-            Assignable::Field {
-                class,
-                field,
-                object,
-            } => {
-                let field = self.context.class(class).field(field);
+            Assignable::Field { field, object } => {
+                let class = object.get_type().unwrap().class_name().unwrap();
+                let field = self.context.class(class).unwrap().field(field).unwrap();
 
                 let object = self.process_expr(object).unwrap();
                 let val = self.process_expr(expr).unwrap();

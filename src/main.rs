@@ -3,47 +3,65 @@ extern crate lalrpop_util;
 
 lalrpop_mod!(#[allow(clippy::all)] pub grammar);
 
+use anyhow::{Context, Result};
+use clap::Parser;
 use grammar::ProgramParser;
 use latc::{
-    error::{ErrorContext, LatteError},
+    error::{ErrorContext, StaticCheckErrorDisplay},
     frontend::CheckedProgram,
+    middlend::HirProgram,
 };
-use std::{
-    io::{self, Read},
-    process::ExitCode,
-};
+use std::{fs, path::PathBuf, process::ExitCode};
 
-fn process(input: &str) -> Result<CheckedProgram<'_>, LatteError> {
-    let defs = ProgramParser::new().parse(input)?;
-    let checked_program = CheckedProgram::new(defs)?;
+#[derive(Parser)]
+struct Arguments {
+    /// Stop after validating input program.
+    #[clap(short, long, default_value_t = false)]
+    check: bool,
+    /// 'nasm' executable location.
+    #[clap(short, long, default_value = "nasm")]
+    nasm: String,
+    /// 'gcc' executable location.
+    #[clap(short, long, default_value = "gcc")]
+    gcc: String,
+    /// Latte runtime location.
+    #[clap(short, long, default_value = "lib/runtime.o")]
+    runtime: String,
+    /// Input Latte program location.
+    file: PathBuf,
+}
 
-    Ok(checked_program)
+fn check(input: &str) -> Result<CheckedProgram<'_>, StaticCheckErrorDisplay> {
+    let ctx = ErrorContext::new(input);
+    let defs = ProgramParser::new()
+        .parse(input)
+        .map_err(|e| ctx.display(e.into()))?;
+    CheckedProgram::new(defs).map_err(|e| ctx.display(e))
+}
+
+fn run(args: Arguments) -> Result<()> {
+    let input = fs::read_to_string(&args.file).context("failed to read input file")?;
+    let checked_program = check(&input).context("static check failed")?;
+
+    if args.check {
+        return Ok(());
+    }
+
+    let _ = HirProgram::new(checked_program);
+
+    Ok(())
 }
 
 fn main() -> ExitCode {
-    let mut input = String::new();
-    let res = io::stdin().read_to_string(&mut input);
-    if let Err(e) = res {
-        eprintln!("ERROR");
-        eprintln!("failed to read STDIN: {}", e);
-
-        return ExitCode::FAILURE;
-    }
-
-    match process(&input) {
-        Ok(..) => {
-            // println!("{}", prog);
-
+    let args = Arguments::parse();
+    match run(args) {
+        Ok(()) => {
             eprintln!("OK");
-
             ExitCode::SUCCESS
         }
         Err(e) => {
-            let ctx = ErrorContext::new(&input);
-
             eprintln!("ERROR");
-            eprintln!("{}", ctx.display(&e));
-
+            eprintln!("{:?}", e);
             ExitCode::FAILURE
         }
     }

@@ -1,6 +1,9 @@
 mod generator;
 
-use crate::middlend::{BlockId, Bytes, GetSize, RelCond};
+use crate::{
+    context::{Bytes, GetSize},
+    middlend::{BlockId, RelCond},
+};
 use std::{
     cmp::Ordering,
     fmt::{self, Display, Formatter},

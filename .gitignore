@@ -7,3 +7,5 @@ test_inputs/*/*.s
 test_inputs/*/*.o
 test_inputs/*/*.out
 test_inputs/*/*.output2
+latc
+latc_x86_64

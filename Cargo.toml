@@ -6,6 +6,8 @@ build = "build.rs"
 authors = ["Michał Smolarek <msmolarekg@gmail.com>"]
 
 [dependencies]
+anyhow = "1"
+clap = { version = "4.1", features = ["derive"] }
 lalrpop-util = { version = "0.19", features = ["lexer"] }
 regex = "1"
 

@@ -1,6 +1,6 @@
 use crate::{
     ast::{ClassDef, FnDef, Type},
-    error::LatteError,
+    error::{self, StaticCheckError},
 };
 
 #[derive(Debug, Clone)]
@@ -17,16 +17,18 @@ pub struct Function<'a> {
 }
 
 impl<'a> Function<'a> {
-    pub fn new(def: &FnDef<'a>, method_of: Option<&ClassDef<'a>>) -> Result<Self, LatteError> {
+    pub fn new(
+        def: &FnDef<'a>,
+        method_of: Option<&ClassDef<'a>>,
+    ) -> Result<Self, StaticCheckError> {
         let dup = super::find_duplicate(def.args.iter().map(|a| a.name));
         if let Some(dup) = dup {
-            return Err(LatteError::new_at(
-                format!(
-                    "argument \"{}\" already defined in function \"{}\"",
-                    dup.inner, def.ident.inner
-                ),
+            error::bail!(
                 dup.offset,
-            ));
+                "argument \"{}\" already defined in function \"{}\"",
+                dup.inner,
+                def.ident.inner,
+            );
         }
 
         let mut args = Vec::with_capacity(def.args.len() + usize::from(method_of.is_some()));

@@ -700,7 +700,7 @@ impl<'a> Optimizer<'a> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::middlend::size::Bytes;
+    use crate::context::Bytes;
 
     #[test]
     fn hir_eval() {

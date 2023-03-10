@@ -1,4 +1,4 @@
-use super::size::{Bytes, GetSize};
+use super::{Bytes, GetSize};
 use crate::ast::Type;
 
 pub struct Layout {
@@ -30,6 +30,7 @@ impl Layout {
         offset
     }
 
+    #[cfg(test)]
     pub fn size(&self) -> i32 {
         self.current_size
     }
