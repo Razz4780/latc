@@ -1,7 +1,6 @@
-use std::ops::Deref;
-
 use super::FunctionId;
 use crate::context::{Class, Context, Function};
+use std::ops::Deref;
 
 #[derive(Clone, Copy)]
 pub struct FnContext<'a, 'b> {

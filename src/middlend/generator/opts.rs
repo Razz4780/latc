@@ -306,9 +306,9 @@ type RegUseMap<'a> = HashMap<VRegId, HashSet<HirLoc>>;
 
 impl<'a> HirFunction<'a> {
     fn get_last_dominated_blocks(&self) -> Vec<Option<BlockId>> {
-        let mut result = vec![None; self.blocks.len()];
+        let mut result = vec![None; self.blocks().len()];
 
-        for id in (0..self.blocks.len()).rev().map(BlockId) {
+        for id in (0..self.blocks().len()).rev().map(BlockId) {
             let dom = match *self.children_of(id) {
                 [c1, c2] => {
                     let l1 = result[c1.0].unwrap_or(c1);
@@ -335,7 +335,7 @@ impl<'a> HirFunction<'a> {
         let mut reg_defs: RegDefMap<'a> = Default::default();
         let mut reg_uses: RegUseMap<'a> = Default::default();
 
-        for (block_id, hirs) in self.blocks.iter().enumerate() {
+        for (block_id, hirs) in self.blocks().iter().enumerate() {
             let block = BlockId(block_id);
             for (hir_idx, hir) in hirs.iter().enumerate() {
                 if let Some(r) = hir.get_defined() {

@@ -1,4 +1,4 @@
-use super::{fn_context::FnContext, types::*};
+use super::{fn_context::FnContext, *};
 use crate::{
     ast::{BinOp, Exp, Item, Leaf, SimpleType, Stmt, Type, UnOp},
     context::Function,

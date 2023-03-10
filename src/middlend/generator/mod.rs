@@ -1,6 +1,6 @@
 mod opts;
 
-use super::hir::{BinOp, BlockId, Hir, PhiOption, RelCond, Symbol, VReg, VRegId, Value};
+use super::*;
 use crate::{
     ast::{self, UnOp},
     context::{Bytes, Context, Function, GetSize},
@@ -8,65 +8,9 @@ use crate::{
 };
 use std::{
     collections::{hash_map::Entry, HashMap},
-    fmt::{self, Debug, Formatter},
     mem,
     ops::RangeFrom,
 };
-
-#[derive(Default, Clone, Debug)]
-pub struct Edges {
-    children: Vec<BlockId>,
-    parents: Vec<BlockId>,
-}
-
-impl Edges {
-    pub fn children(&self) -> &[BlockId] {
-        self.children.as_slice()
-    }
-
-    pub fn parents(&self) -> &[BlockId] {
-        self.parents.as_slice()
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct HirLoc {
-    pub block: BlockId,
-    pub hir_idx: usize,
-}
-
-impl Debug for HirLoc {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}:{}", self.block, self.hir_idx)
-    }
-}
-
-pub struct HirFunction<'a> {
-    blocks: Vec<Vec<Hir<'a>>>,
-    cfg: Vec<Edges>,
-}
-
-impl<'a> HirFunction<'a> {
-    pub fn block(&self, id: BlockId) -> &[Hir<'a>] {
-        self.blocks[id.0].as_slice()
-    }
-
-    pub fn blocks(&self) -> &[Vec<Hir<'a>>] {
-        self.blocks.as_slice()
-    }
-
-    pub fn cfg(&self) -> &[Edges] {
-        self.cfg.as_slice()
-    }
-
-    pub fn parents_of(&self, id: BlockId) -> &[BlockId] {
-        self.cfg[id.0].parents()
-    }
-
-    pub fn children_of(&self, id: BlockId) -> &[BlockId] {
-        self.cfg[id.0].children()
-    }
-}
 
 struct RegGenerator(RangeFrom<usize>);
 
