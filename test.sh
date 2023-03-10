@@ -2,14 +2,14 @@
 
 set -e
 
-make
+make runtime
 
 for f in test_inputs/bad/*.lat
 do
     echo -n "$f... "
 
     set +e
-    ./latc $f 2>/dev/null
+    cargo run -- $f 2>/dev/null
     res=$?
     set -e
 
@@ -33,7 +33,7 @@ do
     echo -n "$f... "
 
     set +e
-    ./latc $f
+    cargo run -- $f 2>/dev/null
     res=$?
     set -e
 
