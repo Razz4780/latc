@@ -9,7 +9,7 @@ do
     echo -n "$f... "
 
     set +e
-    cargo run -- $f 2>/dev/null
+    cargo run --locked -- $f 2>/dev/null
     res=$?
     set -e
 
@@ -33,7 +33,7 @@ do
     echo -n "$f... "
 
     set +e
-    cargo run -- $f 2>/dev/null
+    cargo run --locked -- $f 2>/dev/null
     res=$?
     set -e
 

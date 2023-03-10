@@ -9,7 +9,7 @@ runtime:
 	$(CC) -c $(CFLAGS) lib/runtime.c -o lib/runtime.o
 
 compiler:
-	cargo build --release && cp target/release/latc latc && cp latc latc_x86_64
+	cargo build --release --locked && cp target/release/latc latc && cp latc latc_x86_64
 
 clean:
 	rm -rf \
