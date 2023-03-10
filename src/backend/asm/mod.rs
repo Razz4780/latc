@@ -1,4 +1,4 @@
-mod generator;
+pub mod generator;
 
 use crate::{
     context::{Bytes, GetSize},
@@ -8,8 +8,6 @@ use std::{
     cmp::Ordering,
     fmt::{self, Display, Formatter},
 };
-
-pub use generator::AsmProgram;
 
 impl Bytes {
     pub fn asm(self) -> &'static str {

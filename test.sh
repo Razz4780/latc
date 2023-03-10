@@ -49,10 +49,10 @@ do
         exit 1
     fi
 
-    # base=$(basename $f .lat)
-    # dir=$(dirname $f)
-    # "$dir/$base.out" < "$dir/$base.input" > "$dir/$base.output2"
-    # diff "$dir/$base.output2" "$dir/$base.output"
+    base=$(basename $f .lat)
+    dir=$(dirname $f)
+    "$dir/$base.out" < "$dir/$base.input" > "$dir/$base.output2"
+    diff "$dir/$base.output2" "$dir/$base.output"
 
     echo OK
 done
