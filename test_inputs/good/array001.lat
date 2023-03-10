@@ -1,18 +1,20 @@
 int main() {
 
-  int[] a = new int[10];
+  int[] a = new /* comment */ int[10];
   int j=0;
   while (j<a.length) {
      a[j] = j;
      j++;
   }
-
+/* another comment */
   printInt(a.length);
 
   for (int x : a) 
      printInt(x);
 
-  int x = 45;
+  int x = /* multi
+  line
+   */ 45;
   printInt(x);
   return 0;
 }
