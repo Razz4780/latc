@@ -6,6 +6,8 @@ jobs:
   runner-checks:
     runs-on: ubuntu-latest
     steps:
+      - name: Install deps
+        run: sudo apt install nasm gcc
       - name: Checkout current branch
         uses: actions/checkout@v2
       - name: Build
