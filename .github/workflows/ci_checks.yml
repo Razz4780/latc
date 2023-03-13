@@ -1,0 +1,22 @@
+name: Basic checks
+
+on: [push, pull_request]
+
+jobs:
+  runner-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout current branch
+        uses: actions/checkout@v2
+      - name: Build
+        run: cargo build --locked --all-targets --all-features
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --locked --all-targets --all-features -- --no-deps -D warnings
+      - name: Unit tests
+        run: cargo test --locked --all-targets --all-features
+      - name: Full tests
+        run: ./test.sh
+      - name: Docs
+        run: cargo doc --locked --document-private-items --no-deps
