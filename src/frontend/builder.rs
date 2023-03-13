@@ -1,7 +1,7 @@
-use super::{fn_context::FnContext, *};
+use super::*;
 use crate::{
     ast::{BinOp, Exp, Item, Leaf, SimpleType, Stmt, Type, UnOp},
-    context::Function,
+    context::{FnContext, Function},
     error::{self, StaticCheckError},
 };
 use std::{

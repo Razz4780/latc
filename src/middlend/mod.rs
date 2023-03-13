@@ -2,8 +2,8 @@ mod generator;
 
 use crate::{
     ast,
-    context::{Bytes, Context, GetSize},
-    frontend::{CheckedProgram, FunctionId},
+    context::{Bytes, Context, FunctionId, GetSize},
+    frontend::CheckedProgram,
 };
 use generator::HirGenerator;
 use std::{
@@ -56,17 +56,8 @@ impl<'a> HirProgram<'a> {
         let mut functions: HashMap<FunctionId<'a>, HirFunction<'a>> = Default::default();
 
         for (name, stmts) in program.defs() {
-            let fun = match name {
-                FunctionId::Global { name } => program.ctx().function(name).unwrap(),
-                FunctionId::Method { name, class } => program
-                    .ctx()
-                    .class(class)
-                    .unwrap()
-                    .method(name)
-                    .unwrap()
-                    .as_fun(),
-            };
-            let mut generator = HirGenerator::new(fun, program.ctx());
+            let ctx = program.ctx().fn_context(name).unwrap();
+            let mut generator = HirGenerator::new(ctx);
             for stmt in stmts {
                 generator.process_stmt(stmt);
             }

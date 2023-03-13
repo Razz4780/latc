@@ -4,8 +4,7 @@ use crate::{
         intervals::{Interval, IntervalBuilder},
         regalloc::{RegAllocator, Slot, SCRATCH_1, SCRATCH_2},
     },
-    context::{Bytes, Context, GetSize},
-    frontend::FunctionId,
+    context::{Bytes, Context, FunctionId, GetSize},
     middlend::{BinOp, BlockId, Hir, HirFunction, HirLoc, RelCond, Symbol, VReg, VRegId, Value},
 };
 use std::{

@@ -1,5 +1,6 @@
 mod builder;
 mod class;
+mod fn_context;
 mod function;
 mod layout;
 
@@ -15,7 +16,26 @@ use std::{
 };
 
 pub use class::{Class, Method};
+pub use fn_context::FnContext;
 pub use function::{Argument, Function};
+
+/// A globally unique function id inside a Latte program.
+#[derive(PartialEq, Eq, Hash, Clone, Copy)]
+pub enum FunctionId<'a> {
+    /// A function in the global scope.
+    Global { name: &'a str },
+    /// A function in the class scope (a method).
+    Method { name: &'a str, class: &'a str },
+}
+
+impl<'a> Debug for FunctionId<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Global { name } => f.write_str(name),
+            Self::Method { name, class } => write!(f, "{}::{}", class, name),
+        }
+    }
+}
 
 /// Size in bytes.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]

@@ -3,7 +3,7 @@ mod opts;
 use super::*;
 use crate::{
     ast::{self, UnOp},
-    context::{Bytes, Context, Function, GetSize},
+    context::{Bytes, Context, FnContext, GetSize},
     frontend::{Assignable, CallAddr, Expression, Statement},
 };
 use std::{
@@ -30,7 +30,7 @@ impl RegGenerator {
 }
 
 #[derive(Default, Debug)]
-pub struct BlockBuilder<'a> {
+struct BlockBuilder<'a> {
     prev_blocks: Vec<BlockId>,
     defined_vars: HashMap<usize, Value<'a>>,
     hirs: Vec<Hir<'a>>,
@@ -82,19 +82,21 @@ impl<'a> BlockBuilder<'a> {
     }
 }
 
+/// A struct for transforming a sequence of [`Statement`]s into a sequence of basic blocks ([`Hir`] code).
 pub struct HirGenerator<'a, 'b> {
-    context: &'b Context<'a>,
+    context: FnContext<'a, 'b>,
     reg_gen: RegGenerator,
     blocks: Vec<BlockBuilder<'a>>,
     active_block: BlockId,
 }
 
 impl<'a, 'b> HirGenerator<'a, 'b> {
-    pub fn new(fun: &Function<'a>, context: &'b Context<'a>) -> Self {
+    /// Creates a new instance of this struct for the given [`FnContext`].
+    pub fn new(context: FnContext<'a, 'b>) -> Self {
         let mut reg_gen = RegGenerator::default();
 
         let mut block = BlockBuilder::default();
-        for (var, arg) in fun.args().iter().enumerate() {
+        for (var, arg) in context.current_function().args().iter().enumerate() {
             let reg = reg_gen.gen(arg.ty.size());
             block.define(var, reg.into());
         }
@@ -337,14 +339,16 @@ impl<'a, 'b> HirGenerator<'a, 'b> {
     fn process_field_expr(&mut self, field: &str, object: &Expression<'a>) -> Value<'a> {
         let class = object.get_type().unwrap().class_name().unwrap();
         let field = self.context.class(class).unwrap().field(field).unwrap();
+        let field_size = field.ty().size();
+        let field_offset = field.offset();
 
         let object = self.process_expr(object).unwrap();
-        let result = self.reg_gen.gen(field.ty().size());
+        let result = self.reg_gen.gen(field_size);
 
         self.active_block().emit(Hir::Load {
             base: object,
             index: None,
-            displacement: field.offset(),
+            displacement: field_offset,
             dst: result,
         });
 
@@ -387,6 +391,8 @@ impl<'a, 'b> HirGenerator<'a, 'b> {
                 args = &args[1..];
 
                 let method = self.context.class(class).unwrap().method(method).unwrap();
+                let displacement = method.vtable_idx() * i32::from(Bytes::B8);
+                let ret_size = method.as_fun().ret().map(GetSize::size);
 
                 let vtable = self.reg_gen.gen(Bytes::B8);
                 self.active_block().emit(Hir::Load {
@@ -399,11 +405,11 @@ impl<'a, 'b> HirGenerator<'a, 'b> {
                 self.active_block().emit(Hir::Load {
                     base: vtable.into(),
                     index: None,
-                    displacement: method.vtable_idx() * i32::from(Bytes::B8),
+                    displacement,
                     dst: fun,
                 });
 
-                (fun.into(), method.as_fun().ret().map(GetSize::size))
+                (fun.into(), ret_size)
             }
         };
 
@@ -559,7 +565,13 @@ impl<'a, 'b> HirGenerator<'a, 'b> {
         match ass {
             Assignable::Field { field, object } => {
                 let class = object.get_type().unwrap().class_name().unwrap();
-                let field = self.context.class(class).unwrap().field(field).unwrap();
+                let displacement = self
+                    .context
+                    .class(class)
+                    .unwrap()
+                    .field(field)
+                    .unwrap()
+                    .offset();
 
                 let object = self.process_expr(object).unwrap();
                 let val = self.process_expr(expr).unwrap();
@@ -567,7 +579,7 @@ impl<'a, 'b> HirGenerator<'a, 'b> {
                 self.active_block().emit(Hir::Store {
                     base: object,
                     index: None,
-                    displacement: field.offset(),
+                    displacement,
                     val,
                 });
             }
@@ -619,6 +631,7 @@ impl<'a, 'b> HirGenerator<'a, 'b> {
         }
     }
 
+    /// Processes the next [`Statement`] of the function.
     pub fn process_stmt(&mut self, stmt: &Statement<'a>) {
         match stmt {
             Statement::Assign {
@@ -680,6 +693,7 @@ impl<'a, 'b> HirGenerator<'a, 'b> {
         }
     }
 
+    /// Runs optimizations on the generated basic blocks and transforms them into a [`HirFunction`].
     pub fn finish(mut self) -> HirFunction<'a> {
         self.complete_headers();
         let blocks = self

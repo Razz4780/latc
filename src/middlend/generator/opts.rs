@@ -52,7 +52,7 @@ impl BinOp {
 }
 
 impl<'a> Value<'a> {
-    pub fn as_vreg(&self) -> Option<&VReg> {
+    fn as_vreg(&self) -> Option<&VReg> {
         match self {
             Self::VReg(r) => Some(r),
             _ => None,
@@ -107,7 +107,7 @@ enum PureExpr<'a> {
 }
 
 impl<'a> PureExpr<'a> {
-    pub fn inspect_used<F: FnMut(&VReg)>(&self, mut f: F) {
+    fn inspect_used<F: FnMut(&VReg)>(&self, mut f: F) {
         match self {
             Self::Bin { lhs, rhs, .. } => {
                 if let Value::VReg(r) = lhs {
@@ -135,6 +135,7 @@ impl<'a> PureExpr<'a> {
 }
 
 impl<'a> Hir<'a> {
+    /// Returns a [`VReg`] defined by this instruction.
     pub fn get_defined(&self) -> Option<&VReg> {
         match self {
             Self::Load { dst, .. } => Some(dst),
@@ -147,6 +148,8 @@ impl<'a> Hir<'a> {
         }
     }
 
+    /// Insects [`VReg`]s used by this instruction.
+    /// The [`VReg`] defined by this instruction is not inspected.
     pub fn inspect_used<F: FnMut(&VReg)>(&self, mut f: F) {
         match self {
             Self::Load { base, index, .. } => {
@@ -428,6 +431,7 @@ impl<'a> HirFunction<'a> {
     }
 }
 
+/// A struct for performing optimizations on basic blocks.
 pub struct Optimizer<'a> {
     fun: HirFunction<'a>,
     reg_defs: RegDefMap<'a>,
@@ -435,6 +439,7 @@ pub struct Optimizer<'a> {
 }
 
 impl<'a> Optimizer<'a> {
+    /// Creates a new instance of this struct for the given basic blocks.
     pub fn new(mut blocks: Vec<Vec<Hir<'a>>>) -> Self {
         let mut seen: HashSet<BlockId> = Default::default();
         let mut worklist = vec![BlockId(0)];
@@ -684,6 +689,7 @@ impl<'a> Optimizer<'a> {
         self.fun.rebuild_cfg();
     }
 
+    /// Runs the optimizations and creates a [`HirFunction`] from the processed basic blocks.
     pub fn run(mut self) -> HirFunction<'a> {
         self.sparse_propagate();
         self.remove_dead_blocks();

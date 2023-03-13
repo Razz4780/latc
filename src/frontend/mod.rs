@@ -1,34 +1,12 @@
 mod builder;
-mod fn_context;
 
 use crate::{
     ast::{BinOp, Def, SimpleType, Type, UnOp},
-    context::Context,
+    context::{Context, FunctionId},
     error::StaticCheckError,
 };
 use builder::FunctionBuilder;
-use std::{
-    collections::HashMap,
-    fmt::{self, Debug, Formatter},
-};
-
-/// A globally unique function id inside a Latte program.
-#[derive(PartialEq, Eq, Hash, Clone, Copy)]
-pub enum FunctionId<'a> {
-    /// A function in the global scope.
-    Global { name: &'a str },
-    /// A function in the class scope (a method).
-    Method { name: &'a str, class: &'a str },
-}
-
-impl<'a> Debug for FunctionId<'a> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Global { name } => f.write_str(name),
-            Self::Method { name, class } => write!(f, "{}::{}", class, name),
-        }
-    }
-}
+use std::collections::HashMap;
 
 /// A statically checked Latte program.
 pub struct CheckedProgram<'a> {

@@ -2,7 +2,10 @@ mod asm;
 mod intervals;
 mod regalloc;
 
-use crate::{context::GetSize, frontend::FunctionId, middlend::HirProgram};
+use crate::{
+    context::{FunctionId, GetSize},
+    middlend::HirProgram,
+};
 use asm::{
     generator::{AsmFunction, AsmFunctionBuilder, SymbolResolver},
     Label,
