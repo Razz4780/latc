@@ -12,6 +12,8 @@ use asm::{
 };
 use std::fmt::{self, Display, Formatter};
 
+/// An x64 representation of a Latte program.
+/// The [`Display`] implementation of this struct prints the contents of an assembly file in nasm format.
 pub struct AsmProgram<'a> {
     extern_funs: Vec<Label<'a>>,
     vtables: Vec<(Label<'a>, Vec<Label<'a>>)>,
@@ -20,6 +22,7 @@ pub struct AsmProgram<'a> {
 }
 
 impl<'a> AsmProgram<'a> {
+    /// Creates a new instance of this struct from the given high-level representation.
     pub fn new(hir_prog: HirProgram<'a>) -> Self {
         let mut funs = Vec::with_capacity(hir_prog.functions().len());
 

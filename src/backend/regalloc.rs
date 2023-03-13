@@ -5,14 +5,19 @@ use std::{
     fmt::{self, Debug, Formatter},
 };
 
+/// A location of a value.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Slot {
+    /// General-purpose register.
     Reg(Register),
+    /// Stack slot (callee function's stack frame).
     Stack(usize),
+    /// Param slot (caller function's stack frame).
     Param(usize),
 }
 
 impl Slot {
+    /// Returns the general-purpose register used by this slot.
     pub fn reg(self) -> Option<Register> {
         match self {
             Self::Reg(reg) => Some(reg),
@@ -31,6 +36,7 @@ impl Debug for Slot {
     }
 }
 
+/// A helper struct for runninng register allocation on [`Interval`]s.
 pub struct RegAllocator {
     live: Vec<Interval>,
     active: Vec<(Interval, Register)>,
@@ -43,6 +49,8 @@ pub struct RegAllocator {
 }
 
 impl RegAllocator {
+    /// Creates a new allocator over the given [`Interval`]s.
+    /// `params` is a count of the function's arguments and is required to determine the initial location of values.
     pub fn new(mut intervals: Vec<Interval>, params: usize) -> Self {
         let mut handled: Vec<(Interval, Slot)> = Default::default();
         let mut i = 0;
@@ -131,7 +139,7 @@ impl RegAllocator {
         }
     }
 
-    pub fn handle(&mut self, it: Interval) {
+    fn handle(&mut self, it: Interval) {
         self.expire_old_intervals(&it);
 
         match self.free_regs.pop() {
@@ -140,6 +148,7 @@ impl RegAllocator {
         }
     }
 
+    /// Runs the register allocation and binds every [`Interval`] to a [`Slot`].
     pub fn run(mut self) -> Vec<(Interval, Slot)> {
         self.live.sort_unstable_by_key(|it| Reverse(*it.begin()));
 
@@ -188,7 +197,9 @@ fn preference(reg: Register) -> usize {
     }
 }
 
+/// The first scratch register not used by the register allocation algorithm.
 pub const SCRATCH_1: Register = Register::R8;
+/// The second scratch register not used by the register allocation algorithm.
 pub const SCRATCH_2: Register = Register::R9;
 
 #[derive(PartialEq, Eq)]

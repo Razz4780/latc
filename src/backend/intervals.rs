@@ -5,6 +5,7 @@ use std::{
     fmt::{self, Debug, Formatter},
 };
 
+/// A lifetime interval for a virtual register.
 #[derive(PartialEq, Eq)]
 pub struct Interval {
     begin: HirLoc,
@@ -47,6 +48,7 @@ impl Interval {
     }
 }
 
+/// A helper struct for generating lifetime [`Interval`]s inside a [`HirFunction`].
 pub struct IntervalBuilder<'a> {
     fun: &'a HirFunction<'a>,
     livein: HashMap<BlockId, HashSet<VRegId>>,
@@ -54,6 +56,7 @@ pub struct IntervalBuilder<'a> {
 }
 
 impl<'a> IntervalBuilder<'a> {
+    /// Creates a new instance of this struct for the given [`HirFunction`].
     pub fn new(fun: &'a HirFunction<'a>) -> Self {
         Self {
             fun,
@@ -177,6 +180,7 @@ impl<'a> IntervalBuilder<'a> {
         self.livein.insert(id, live);
     }
 
+    /// Generates lifetime [`Interval`]s.
     pub fn run(mut self) -> Vec<Interval> {
         for block_id in (0..self.fun.blocks().len()).rev().map(BlockId) {
             self.process_block(block_id);

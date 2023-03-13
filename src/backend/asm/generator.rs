@@ -12,6 +12,7 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 
+/// A helper struct for resolving high-level [`Symbol`]s into corresponding nasm [`Label`]s.
 pub struct SymbolResolver<'a, 'b> {
     literals: HashMap<&'a str, Label<'a>>,
     context: &'b Context<'a>,
@@ -51,6 +52,7 @@ impl<'a, 'b> SymbolResolver<'a, 'b> {
         }
     }
 
+    /// Returns the labels for all string literals resolved using this struct.
     pub fn literals(self) -> Vec<(Label<'a>, &'a str)> {
         self.literals
             .into_iter()
@@ -359,6 +361,7 @@ impl StackLayout {
     }
 }
 
+/// A helper struct for generating x64 instructions from a [`HirFunction`].
 pub struct AsmFunctionBuilder<'a, 'b> {
     name: Label<'a>,
 
@@ -376,6 +379,12 @@ pub struct AsmFunctionBuilder<'a, 'b> {
 }
 
 impl<'a, 'b> AsmFunctionBuilder<'a, 'b> {
+    /// Creates a new instance of this struct.
+    /// Params:
+    /// * `name` - id of the [`HirFunction`].
+    /// * `params` - function parameters size
+    /// * `hir_fun` - high-level representation of a Latte function
+    /// * `symbols` - struct for converting high-level [`Symbol`] into nasm [`Label`]s
     pub fn new(
         name: FunctionId<'a>,
         params: Vec<Bytes>,
@@ -1109,6 +1118,7 @@ impl<'a, 'b> AsmFunctionBuilder<'a, 'b> {
         }
     }
 
+    /// Runs this generator. Returns the x64 code for the processed function and the used resolver.
     pub fn run(mut self) -> (AsmFunction<'a>, SymbolResolver<'a, 'b>) {
         loop {
             let Some(block) = self.hir_fun.blocks().get(self.current_loc.block.0) else {
@@ -1148,6 +1158,7 @@ impl<'a, 'b> AsmFunctionBuilder<'a, 'b> {
     }
 }
 
+/// x64 code for a Latte function.
 pub struct AsmFunction<'a> {
     label: Label<'a>,
     blocks: Vec<(Label<'a>, Vec<Inst<'a>>)>,

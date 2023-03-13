@@ -19,6 +19,7 @@ impl Bytes {
     }
 }
 
+/// A general-purpose x64 register.
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Register {
@@ -66,6 +67,7 @@ impl Display for Register {
 }
 
 impl Register {
+    /// Registers used to pass function arguments.
     pub const FUN_PARAMS: [Self; 6] = [
         Self::RDI,
         Self::RSI,
@@ -75,7 +77,7 @@ impl Register {
         Self::R9,
     ];
 
-    pub fn caller_saved(self) -> bool {
+    fn caller_saved(self) -> bool {
         matches!(
             self,
             Register::RAX
@@ -90,15 +92,18 @@ impl Register {
         )
     }
 
-    pub fn full(self) -> SizedRegister {
+    /// Returns a [`SizedRegister`] corresponding to the whole register.
+    fn full(self) -> SizedRegister {
         self.with_size(Bytes::B8)
     }
 
-    pub fn with_size(self, size: Bytes) -> SizedRegister {
+    /// Returns part of this register with the given size.
+    fn with_size(self, size: Bytes) -> SizedRegister {
         SizedRegister { reg: self, size }
     }
 }
 
+/// A struct representing a part of a general-purpose [`Register`].
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub struct SizedRegister {
     reg: Register,
@@ -106,7 +111,7 @@ pub struct SizedRegister {
 }
 
 impl SizedRegister {
-    pub fn op(self) -> Operand<'static> {
+    fn op(self) -> Operand<'static> {
         Operand::Reg(self)
     }
 }
@@ -153,6 +158,7 @@ impl Display for SizedRegister {
     }
 }
 
+/// A nasm label.
 #[derive(Clone, PartialEq, Eq)]
 pub enum Label<'a> {
     Literal(usize),
@@ -176,6 +182,7 @@ impl<'a> Display for Label<'a> {
     }
 }
 
+/// An operand for x64 instruction.
 #[derive(PartialEq, Eq, Clone)]
 pub enum Operand<'a> {
     Imm(i64, Bytes),
@@ -322,6 +329,7 @@ impl From<RelCond> for Cond {
     }
 }
 
+/// An x64 instruction.
 pub enum Inst<'a> {
     Call {
         operand: Operand<'a>,
