@@ -17,6 +17,7 @@ use std::{
 pub use class::{Class, Method};
 pub use function::{Argument, Function};
 
+/// Size in bytes.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Bytes {
     B8,
@@ -70,11 +71,14 @@ impl<'a> GetSize for SimpleType<'a> {
     }
 }
 
+/// Finds the first duplicate in the given identifiers.
 fn find_duplicate<'a, I: Iterator<Item = Leaf<&'a str>>>(mut idents: I) -> Option<Leaf<&'a str>> {
     let mut seen = HashSet::new();
     idents.find(|ident| !seen.insert(ident.inner))
 }
 
+/// Context of a program.
+/// Contains function and class signatures.
 #[derive(Debug)]
 pub struct Context<'a> {
     functions: HashMap<&'a str, Function<'a>>,
@@ -82,10 +86,14 @@ pub struct Context<'a> {
 }
 
 impl<'a> Context<'a> {
+    /// Byte offset of the array elements pointer inside an array struct.
     pub const ARRAY_ELEMS_OFFSET: i32 = 0;
+    /// Byte offset of the array length inside an array struct.
     pub const ARRAY_LENGTH_OFFSET: i32 = 8;
+    /// Byte offset of the vtable pointer inside a class.
     pub const CLASS_VTABLE_OFFSET: i32 = 0;
 
+    /// Statically checks the given [`Def`]s and creates a new instance of this struct.
     pub fn new(defs: &[Def<'a>]) -> Result<Self, StaticCheckError> {
         let mut builder = ContextBuilder::default();
 

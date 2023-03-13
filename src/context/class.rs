@@ -6,6 +6,7 @@ use crate::{
 };
 use std::rc::Rc;
 
+/// A class method signature.
 #[derive(Debug, Clone)]
 pub struct Method<'a> {
     function: Function<'a>,
@@ -14,19 +15,24 @@ pub struct Method<'a> {
 }
 
 impl<'a> Method<'a> {
+    /// Returns the signature of this method.
     pub fn as_fun(&self) -> &Function<'a> {
         &self.function
     }
 
+    /// Returns the index of this method inside the class' vtable.
     pub fn vtable_idx(&self) -> i32 {
         self.vtable_idx
     }
 
+    /// Returns the name of the class containing the definition this method.
+    /// This may be some class higher in the inheritance tree.
     pub fn origin_class(&self) -> &'a str {
         self.origin_class
     }
 }
 
+/// A class field signature.
 #[derive(Debug, Clone)]
 pub struct Field<'a> {
     name: &'a str,
@@ -35,19 +41,23 @@ pub struct Field<'a> {
 }
 
 impl<'a> Field<'a> {
+    /// Returns the name of this field.
     pub fn name(&self) -> &'a str {
         self.name
     }
 
+    /// Returns the type of this field.
     pub fn ty(&self) -> &Type<'a> {
         &self.ty
     }
 
+    /// Returns the offset of this field inside a class instance.
     pub fn offset(&self) -> i32 {
         self.offset
     }
 }
 
+/// A class signature.
 #[derive(Debug)]
 pub struct Class<'a> {
     parent: Option<Rc<Class<'a>>>,
@@ -57,6 +67,8 @@ pub struct Class<'a> {
 }
 
 impl<'a> Class<'a> {
+    /// Statically checks the given [`ClassDef`] and creates a new instance of this struct.
+    /// Does not check statements inside the class methods.
     pub fn new(
         def: &ClassDef<'a>,
         parent: Option<Rc<Class<'a>>>,
@@ -171,29 +183,36 @@ impl<'a> Class<'a> {
         Ok(())
     }
 
+    /// Returns the [`Method`] with the given name.
     pub fn method(&self, name: &str) -> Option<&Method<'a>> {
         self.methods.iter().find(|m| m.as_fun().name() == name)
     }
 
+    /// Returns the [`Field`] with the given name.
     pub fn field(&self, name: &str) -> Option<&Field<'a>> {
         self.fields.iter().rev().find(|f| f.name() == name)
     }
 
+    /// Returns the name of this class.
     pub fn name(&self) -> &'a str {
         self.name
     }
 
+    /// Returns the parent of this class.
     pub fn parent(&self) -> Option<&Class<'a>> {
         self.parent.as_deref()
     }
 
+    /// Returns the size of this class in bytes.
     pub fn size(&self) -> i32 {
         self.fields
             .last()
             .map(|f| f.offset + i32::from(f.ty().size()))
-            .unwrap_or_default()
+            .unwrap_or(Bytes::B8.into())
     }
 
+    /// Returns all methods of this class.
+    /// This includes methods defined higher in the inheritance tree.
     pub fn methods(&self) -> &[Method<'a>] {
         self.methods.as_slice()
     }

@@ -12,39 +12,46 @@ use std::{
     ops::{Add, Sub},
 };
 
+/// High-level intermediate representation of a correct Latte function.
 pub struct HirFunction<'a> {
     blocks: Vec<Vec<Hir<'a>>>,
     cfg: Vec<Edges>,
 }
 
 impl<'a> HirFunction<'a> {
+    /// Returns the basic block with the given id.
+    /// Panics if the block does not exist.
     pub fn block(&self, id: BlockId) -> &[Hir<'a>] {
         self.blocks[id.0].as_slice()
     }
 
+    /// Returns all basic blocks in this function.
     pub fn blocks(&self) -> &[Vec<Hir<'a>>] {
         self.blocks.as_slice()
     }
 
-    pub fn cfg(&self) -> &[Edges] {
-        self.cfg.as_slice()
-    }
-
+    /// Returns parents of the basic block with the given id.
+    /// Panics if the block does not exist.
     pub fn parents_of(&self, id: BlockId) -> &[BlockId] {
         self.cfg[id.0].parents()
     }
 
+    /// Returns children of the basic block with the given id.
+    /// Panics if the block does not exist.
     pub fn children_of(&self, id: BlockId) -> &[BlockId] {
         self.cfg[id.0].children()
     }
 }
 
+/// High-level intermediate representation of a correct Latte program.
 pub struct HirProgram<'a> {
     context: Context<'a>,
     functions: HashMap<FunctionId<'a>, HirFunction<'a>>,
 }
 
 impl<'a> HirProgram<'a> {
+    /// Creates a new instance of this struct.
+    /// Should never panic, as [`CheckedProgram`] represents a valid Latte program.
     pub fn new(program: CheckedProgram<'a>) -> Self {
         let mut functions: HashMap<FunctionId<'a>, HirFunction<'a>> = Default::default();
 
@@ -74,15 +81,18 @@ impl<'a> HirProgram<'a> {
         }
     }
 
+    /// Returns the [`Context`] for this program.
     pub fn context(&self) -> &Context<'a> {
         &self.context
     }
 
+    /// Returns all [`HirFunction`]s in this program.
     pub fn functions(&self) -> &HashMap<FunctionId<'a>, HirFunction<'a>> {
         &self.functions
     }
 }
 
+/// An id of a basic block inside [`HirFunction`].
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct BlockId(pub usize);
 
@@ -108,6 +118,7 @@ impl Debug for BlockId {
     }
 }
 
+/// An id of a virtual register used by [`Hir`] code.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct VRegId(pub usize);
 
@@ -117,6 +128,7 @@ impl Debug for VRegId {
     }
 }
 
+/// Virtual register used by [`Hir`] code.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct VReg {
     pub id: VRegId,
@@ -135,17 +147,23 @@ impl GetSize for VReg {
     }
 }
 
+/// Symbols used to identify globally accessible data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Symbol<'a> {
     Literal(&'a str),
+    /// Hidden Latte builtin.
     AddStrings,
+    /// Hidden Latte builtin.
     CmpStrings,
+    /// Hidden Latte builtin.
     NewArray,
+    /// Hidden Latte builtin.
     NewObject,
     Function(&'a str),
     VTable(&'a str),
 }
 
+/// A value used by the [`Hir`] code.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Value<'a> {
     VReg(VReg),
@@ -289,7 +307,7 @@ impl TryFrom<ast::BinOp> for RelCond {
 }
 
 impl RelCond {
-    pub fn as_cc(self) -> &'static str {
+    fn as_cc(self) -> &'static str {
         match self {
             Self::LTH => "l",
             Self::LE => "le",
@@ -313,6 +331,8 @@ impl<'a> Debug for PhiOption<'a> {
     }
 }
 
+/// A high-level intermediate representation.
+/// Modeled after LLVM.
 pub enum Hir<'a> {
     Load {
         base: Value<'a>,
@@ -442,25 +462,31 @@ impl<'a> Debug for Hir<'a> {
     }
 }
 
+/// A node in the control flow graph, corresponds to a single basic block.
 #[derive(Default, Clone, Debug)]
-pub struct Edges {
+struct Edges {
     children: Vec<BlockId>,
     parents: Vec<BlockId>,
 }
 
 impl Edges {
-    pub fn children(&self) -> &[BlockId] {
+    /// Returns the children of this basic block.
+    fn children(&self) -> &[BlockId] {
         self.children.as_slice()
     }
 
-    pub fn parents(&self) -> &[BlockId] {
+    /// Returns the parents of this basic block.
+    fn parents(&self) -> &[BlockId] {
         self.parents.as_slice()
     }
 }
 
+/// A location of a [`Hir`] instruction inside a [`HirFunction`].
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct HirLoc {
+    /// Id of the basic block containing this instruction.
     pub block: BlockId,
+    /// Index of this instruction inside the basic block.
     pub hir_idx: usize,
 }
 

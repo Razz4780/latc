@@ -9,6 +9,7 @@ pub struct Argument<'a> {
     pub ty: Type<'a>,
 }
 
+/// A function signature.
 #[derive(Debug, Clone)]
 pub struct Function<'a> {
     ret: Option<Type<'a>>,
@@ -17,6 +18,8 @@ pub struct Function<'a> {
 }
 
 impl<'a> Function<'a> {
+    /// Statically checks the signature of the given [`FnDef`] and creates a new instance of this struct.
+    /// Does not check the function's statements.
     pub fn new(
         def: &FnDef<'a>,
         method_of: Option<&ClassDef<'a>>,
@@ -52,19 +55,23 @@ impl<'a> Function<'a> {
         })
     }
 
+    /// Returns the [`Type`] returned by this function.
     pub fn ret(&self) -> Option<&Type<'a>> {
         self.ret.as_ref()
     }
 
+    /// Returns the [`Argument`]s of this function.
     pub fn args(&self) -> &[Argument<'a>] {
         self.args.as_slice()
     }
 
+    /// Returns the name of this function.
     pub fn name(&self) -> &'a str {
         self.name
     }
 }
 
+/// Returns all builtin functions visible to the programmer.
 pub fn public_builtins() -> Vec<Function<'static>> {
     vec![
         Function {

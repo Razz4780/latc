@@ -12,9 +12,12 @@ use std::{
     fmt::{self, Debug, Formatter},
 };
 
+/// A globally unique function id inside a Latte program.
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub enum FunctionId<'a> {
+    /// A function in the global scope.
     Global { name: &'a str },
+    /// A function in the class scope (a method).
     Method { name: &'a str, class: &'a str },
 }
 
@@ -27,12 +30,14 @@ impl<'a> Debug for FunctionId<'a> {
     }
 }
 
+/// A statically checked Latte program.
 pub struct CheckedProgram<'a> {
     ctx: Context<'a>,
     defs: HashMap<FunctionId<'a>, Vec<Statement<'a>>>,
 }
 
 impl<'a> CheckedProgram<'a> {
+    /// Statically checks the given [`Def`]s and creates an instance of this struct.
     pub fn new(dirty: Vec<Def<'a>>) -> Result<Self, StaticCheckError> {
         let ctx = Context::new(&dirty)?;
         let mut defs = HashMap::new();
@@ -74,10 +79,12 @@ impl<'a> CheckedProgram<'a> {
         Ok(Self { ctx, defs })
     }
 
+    /// Returns the [`Context`] for this program.
     pub fn ctx(&self) -> &Context<'a> {
         &self.ctx
     }
 
+    /// Returns the implementations of functions in this program.
     pub fn defs(&self) -> &HashMap<FunctionId<'a>, Vec<Statement<'a>>> {
         &self.defs
     }
@@ -134,6 +141,7 @@ pub enum CallAddr<'a> {
     CmpStrings,
 }
 
+/// A statically checked statement of a Latte program.
 #[derive(Debug)]
 pub enum Statement<'a> {
     Cond {
@@ -153,6 +161,7 @@ pub enum Statement<'a> {
     Return(Expression<'a>),
 }
 
+/// A statically checked expression of a Latte program.
 #[derive(Debug, Clone)]
 pub enum Expression<'a> {
     Void,
@@ -195,6 +204,8 @@ pub enum Expression<'a> {
 }
 
 impl<'a> Expression<'a> {
+    /// Returns a "zero" value for the given [`Type`].
+    /// This value is used for uninitialized variables.
     pub fn zero(of_type: Type<'a>) -> Self {
         match of_type {
             Type::Arr(..) => Self::Null(of_type),
@@ -207,6 +218,8 @@ impl<'a> Expression<'a> {
         }
     }
 
+    /// Returns the [`Type`] returned by this expression.
+    /// Only [`Expression::Void`] and calls to functions returning no value returns no type.
     pub fn get_type(&self) -> Option<Type<'a>> {
         match self {
             Self::Void => None,
@@ -225,6 +238,8 @@ impl<'a> Expression<'a> {
         }
     }
 
+    /// Returns whether this expression is known to exit the program when evaluated.
+    /// This is true only for direct calls to a builtin `error` function.
     pub fn exits(&self) -> bool {
         matches!(
             self,

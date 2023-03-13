@@ -9,7 +9,7 @@ use std::{
     mem,
 };
 
-pub enum Callable<'a> {
+enum Callable<'a> {
     Static {
         name: &'a str,
     },
@@ -17,12 +17,6 @@ pub enum Callable<'a> {
         method: &'a str,
         object: Expression<'a>,
     },
-}
-
-impl<'a> Callable<'a> {
-    fn is_dynamic(&self) -> bool {
-        matches!(self, Self::Dynamic { .. })
-    }
 }
 
 #[derive(Clone, Copy)]
@@ -306,10 +300,9 @@ impl<'a, 'b> ExpressionProcessor<'a, 'b> {
         arguments: &[Exp<'a>],
     ) -> Result<Expression<'a>, StaticCheckError> {
         let (callable, decl) = self.process_callable(function)?;
-        let expected = if callable.is_dynamic() {
-            &decl.args()[1..]
-        } else {
-            decl.args()
+        let expected = match callable {
+            Callable::Dynamic { .. } => &decl.args()[1..],
+            Callable::Static { .. } => decl.args(),
         };
 
         if arguments.len() != expected.len() {
@@ -501,6 +494,7 @@ struct Scope<'a> {
     vars: HashMap<&'a str, usize>,
 }
 
+/// A helper struct for statically checking a function's implementation.
 pub struct FunctionBuilder<'a, 'b> {
     ctx: FnContext<'a, 'b>,
     stmts: Vec<Statement<'a>>,
@@ -509,6 +503,7 @@ pub struct FunctionBuilder<'a, 'b> {
 }
 
 impl<'a, 'b> FunctionBuilder<'a, 'b> {
+    /// Creates a new instance of this struct for the given [`FnContext`].
     pub fn new(ctx: FnContext<'a, 'b>) -> Self {
         let args = ctx.current_function().args();
 
@@ -745,6 +740,7 @@ impl<'a, 'b> FunctionBuilder<'a, 'b> {
         Ok(())
     }
 
+    /// Processes the next statement in the function's implementation.
     pub fn add_statement(&mut self, statement: Stmt<'a>) -> Result<(), StaticCheckError> {
         match statement {
             Stmt::Empty => {}
@@ -855,6 +851,8 @@ impl<'a, 'b> FunctionBuilder<'a, 'b> {
         Ok(())
     }
 
+    /// Finishes processing and returns the processed function implementation.
+    /// Should be called after processing all [`Stmt`]s.
     pub fn finish(self) -> Result<Vec<Statement<'a>>, StaticCheckError> {
         let (mut statements, stops) = simplify_flow(self.stmts);
 

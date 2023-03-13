@@ -1,5 +1,6 @@
 use std::fmt::{self, Debug, Display, Formatter};
 
+/// A position inside an input Latte file.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Position {
     pub line: usize,
@@ -12,9 +13,12 @@ impl Display for Position {
     }
 }
 
+/// A leaf node inside an AST.
+/// Contains an actual node and a byte offset.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct Leaf<T> {
     pub inner: T,
+    /// Byte offset inside an input Latte program.
     pub offset: usize,
 }
 
@@ -23,6 +27,7 @@ impl<T> Leaf<T> {
         Self { inner, offset }
     }
 
+    /// Maps the inner node held by this instance.
     pub fn map<U, F: FnOnce(T) -> U>(self, f: F) -> Leaf<U> {
         Leaf {
             inner: f(self.inner),
